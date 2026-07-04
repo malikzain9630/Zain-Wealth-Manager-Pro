@@ -22,6 +22,19 @@ from transactions import create_transaction_sheet
 
 from services.portfolio_service import get_all_holdings
 from services.mutual_fund_service import get_all_mutual_funds
+from services.dividend_service import (
+    get_all_dividends,
+    get_income_summary,
+    get_income_summary_by_symbol,
+    get_income_summary_by_month,
+    get_income_summary_by_year,
+)
+from services.dividend_chart_service import (
+    get_stock_wise_dividend_data,
+    get_monthly_dividend_data,
+    get_yearly_dividend_data,
+    get_tax_vs_net_data,
+)
 
 
 def create_reports():
@@ -33,6 +46,9 @@ def create_reports():
         1. PSX Portfolio
         2. Mutual Funds Portfolio
         3. Overall Wealth Summary
+        4. Dividend Income
+        5. Dividend Summary
+        6. Dividend Charts
     """
 
     output = Path(__file__).resolve().parent.parent.parent / "output"
@@ -46,6 +62,7 @@ def create_reports():
 
     psx_holdings = get_all_holdings()
     mutual_funds = get_all_mutual_funds()
+    dividends = get_all_dividends()
 
     workbook = xlsxwriter.Workbook(str(excel_file))
 
@@ -89,6 +106,22 @@ def create_reports():
         formats
     )
 
+    create_dividend_income_sheet(
+        workbook,
+        dividends,
+        formats
+    )
+
+    create_dividend_summary_sheet(
+        workbook,
+        formats
+    )
+
+    create_dividend_charts_sheet(
+        workbook,
+        formats
+    )
+
     workbook.close()
 
     # Keep existing PDF report generation safe.
@@ -101,7 +134,8 @@ def create_reports():
     create_combined_pdf_report(
         combined_pdf_file,
         psx_holdings,
-        mutual_funds
+        mutual_funds,
+        dividends
     )
 
     return excel_file, combined_pdf_file
@@ -662,12 +696,13 @@ def create_excel_pie_chart(workbook, sheet, title, categories_range, values_rang
     Add pie chart to Excel sheet.
     """
 
+    sheet_name = get_excel_sheet_name(sheet)
     chart = workbook.add_chart({"type": "pie"})
 
     chart.add_series({
         "name": title,
-        "categories": f"='Charts'!{categories_range}",
-        "values": f"='Charts'!{values_range}",
+        "categories": f"='{sheet_name}'!{categories_range}",
+        "values": f"='{sheet_name}'!{values_range}",
         "data_labels": {
             "percentage": True,
             "category": True,
@@ -685,17 +720,26 @@ def create_excel_pie_chart(workbook, sheet, title, categories_range, values_rang
     sheet.insert_chart(insert_cell, chart)
 
 
-def create_excel_bar_chart(workbook, sheet, title, categories_range, values_range, insert_cell):
+def create_excel_bar_chart(
+    workbook,
+    sheet,
+    title,
+    categories_range,
+    values_range,
+    insert_cell,
+    y_axis_name="Profit / Loss"
+):
     """
     Add bar chart to Excel sheet.
     """
 
+    sheet_name = get_excel_sheet_name(sheet)
     chart = workbook.add_chart({"type": "column"})
 
     chart.add_series({
         "name": title,
-        "categories": f"='Charts'!{categories_range}",
-        "values": f"='Charts'!{values_range}",
+        "categories": f"='{sheet_name}'!{categories_range}",
+        "values": f"='{sheet_name}'!{values_range}",
         "data_labels": {
             "value": True
         },
@@ -703,7 +747,7 @@ def create_excel_bar_chart(workbook, sheet, title, categories_range, values_rang
 
     chart.set_title({"name": title})
     chart.set_x_axis({"name": "Category"})
-    chart.set_y_axis({"name": "Profit / Loss"})
+    chart.set_y_axis({"name": y_axis_name})
     chart.set_style(11)
     chart.set_size({
         "width": 460,
@@ -711,6 +755,18 @@ def create_excel_bar_chart(workbook, sheet, title, categories_range, values_rang
     })
 
     sheet.insert_chart(insert_cell, chart)
+
+
+def get_excel_sheet_name(sheet):
+    """
+    Return safe worksheet name for formulas.
+    """
+
+    try:
+        return sheet.get_name().replace("'", "''")
+
+    except Exception:
+        return "Charts"
 
 
 def get_psx_allocation_rows(holdings):
@@ -788,6 +844,334 @@ def get_profit_loss_rows(holdings, mutual_funds):
 
     if mf_investment > 0 or mf_current > 0:
         rows.append(["Mutual Funds", mf_profit])
+
+    return rows
+
+
+
+def create_dividend_income_sheet(workbook, dividends, formats):
+    """
+    Create database-based dividend income records sheet.
+    """
+
+    sheet = safe_add_worksheet(workbook, "Dividend Income")
+
+    sheet.merge_range("A1:I1", "Dividend Income Records", formats["title"])
+    sheet.write("A2", "Generated On", formats["section"])
+    sheet.write("B2", datetime.now().strftime("%d-%m-%Y %I:%M %p"), formats["text"])
+
+    headers = [
+        "ID",
+        "Symbol",
+        "Shares",
+        "Dividend / Share",
+        "Gross Amount",
+        "Tax Amount",
+        "Net Amount",
+        "Payment Date",
+        "Remarks",
+    ]
+
+    for col, header in enumerate(headers):
+        sheet.write(3, col, header, formats["header"])
+
+    row = 4
+
+    total_gross = 0
+    total_tax = 0
+    total_net = 0
+
+    for item in dividends:
+
+        record_id = safe_get(item, "id", "")
+        symbol = str(safe_get(item, "symbol", "")).upper()
+        shares = safe_float(safe_get(item, "shares", 0))
+        dividend_per_share = safe_float(safe_get(item, "dividend_per_share", 0))
+        gross_amount = safe_float(safe_get(item, "gross_amount", 0))
+        tax_amount = safe_float(safe_get(item, "tax_amount", 0))
+        net_amount = safe_float(safe_get(item, "net_amount", 0))
+        payment_date = str(safe_get(item, "payment_date", ""))
+        remarks = str(safe_get(item, "remarks", ""))
+
+        total_gross += gross_amount
+        total_tax += tax_amount
+        total_net += net_amount
+
+        sheet.write(row, 0, record_id, formats["text"])
+        sheet.write(row, 1, symbol, formats["text"])
+        sheet.write_number(row, 2, shares, formats["number"])
+        sheet.write_number(row, 3, dividend_per_share, formats["currency"])
+        sheet.write_number(row, 4, gross_amount, formats["currency"])
+        sheet.write_number(row, 5, tax_amount, formats["currency"])
+        sheet.write_number(row, 6, net_amount, formats["currency"])
+        sheet.write(row, 7, payment_date, formats["text"])
+        sheet.write(row, 8, remarks, formats["text"])
+
+        row += 1
+
+    total_row = row + 1
+
+    sheet.write(total_row, 3, "Total", formats["total_label"])
+    sheet.write_number(total_row, 4, total_gross, formats["total_value"])
+    sheet.write_number(total_row, 5, total_tax, formats["total_value"])
+    sheet.write_number(total_row, 6, total_net, formats["total_value"])
+
+    sheet.set_column("A:A", 10)
+    sheet.set_column("B:B", 14)
+    sheet.set_column("C:D", 16)
+    sheet.set_column("E:G", 18)
+    sheet.set_column("H:H", 16)
+    sheet.set_column("I:I", 35)
+    sheet.freeze_panes(4, 0)
+
+
+def create_dividend_summary_sheet(workbook, formats):
+    """
+    Create dividend summary sheet:
+        1. Overall Summary
+        2. Stock-wise Summary
+        3. Monthly Summary
+        4. Yearly Summary
+    """
+
+    sheet = safe_add_worksheet(workbook, "Dividend Summary")
+
+    sheet.merge_range("A1:F1", "Dividend Income Summary", formats["title"])
+    sheet.write("A2", "Generated On", formats["section"])
+    sheet.write("B2", datetime.now().strftime("%d-%m-%Y %I:%M %p"), formats["text"])
+
+    overall = get_income_summary()
+    symbol_rows = get_income_summary_by_symbol()
+    month_rows = get_income_summary_by_month()
+    year_rows = get_income_summary_by_year()
+
+    sheet.write("A4", "Overall Dividend Summary", formats["section"])
+
+    overall_headers = [
+        "Gross Amount",
+        "Tax Amount",
+        "Net Amount",
+        "Total Records",
+    ]
+
+    for col, header in enumerate(overall_headers):
+        sheet.write(5, col, header, formats["header"])
+
+    sheet.write_number(6, 0, safe_float(overall["gross_amount"]), formats["currency"])
+    sheet.write_number(6, 1, safe_float(overall["tax_amount"]), formats["currency"])
+    sheet.write_number(6, 2, safe_float(overall["net_amount"]), formats["currency"])
+    sheet.write_number(6, 3, int(overall["total_records"]), formats["text"])
+
+    write_dividend_summary_table(
+        sheet,
+        "A10",
+        "Stock-wise Dividend Summary",
+        "Symbol",
+        symbol_rows,
+        "symbol",
+        formats
+    )
+
+    write_dividend_summary_table(
+        sheet,
+        "A25",
+        "Monthly Dividend Summary",
+        "Month",
+        month_rows,
+        "month",
+        formats
+    )
+
+    write_dividend_summary_table(
+        sheet,
+        "A40",
+        "Yearly Dividend Summary",
+        "Year",
+        year_rows,
+        "year",
+        formats
+    )
+
+    sheet.set_column("A:A", 18)
+    sheet.set_column("B:E", 18)
+    sheet.set_column("F:F", 16)
+
+
+def write_dividend_summary_table(
+    sheet,
+    start_cell,
+    title,
+    first_header,
+    rows,
+    first_key,
+    formats
+):
+    """
+    Write a dividend summary section.
+    """
+
+    start_row, start_col = cell_to_row_col(start_cell)
+
+    sheet.write(start_row, start_col, title, formats["section"])
+
+    headers = [
+        first_header,
+        "Records",
+        "Gross Amount",
+        "Tax Amount",
+        "Net Amount",
+    ]
+
+    for index, header in enumerate(headers):
+        sheet.write(start_row + 1, start_col + index, header, formats["header"])
+
+    if not rows:
+        sheet.write(start_row + 2, start_col, "No Data", formats["text"])
+        sheet.write_number(start_row + 2, start_col + 1, 0, formats["text"])
+        sheet.write_number(start_row + 2, start_col + 2, 0, formats["currency"])
+        sheet.write_number(start_row + 2, start_col + 3, 0, formats["currency"])
+        sheet.write_number(start_row + 2, start_col + 4, 0, formats["currency"])
+        return
+
+    row_number = start_row + 2
+
+    for item in rows:
+
+        first_value = str(safe_get(item, first_key, ""))
+        records = int(safe_float(safe_get(item, "records", 0)))
+        gross_amount = safe_float(safe_get(item, "gross_amount", 0))
+        tax_amount = safe_float(safe_get(item, "tax_amount", 0))
+        net_amount = safe_float(safe_get(item, "net_amount", 0))
+
+        sheet.write(row_number, start_col, first_value, formats["text"])
+        sheet.write_number(row_number, start_col + 1, records, formats["text"])
+        sheet.write_number(row_number, start_col + 2, gross_amount, formats["currency"])
+        sheet.write_number(row_number, start_col + 3, tax_amount, formats["currency"])
+        sheet.write_number(row_number, start_col + 4, net_amount, formats["currency"])
+
+        row_number += 1
+
+
+def create_dividend_charts_sheet(workbook, formats):
+    """
+    Create dividend charts sheet:
+        1. Stock-wise Dividend Income
+        2. Monthly Dividend Income
+        3. Yearly Dividend Income
+        4. Tax vs Net Received
+    """
+
+    sheet = safe_add_worksheet(workbook, "Dividend Charts")
+
+    sheet.merge_range("A1:J1", "Dividend Income Charts", formats["title"])
+    sheet.write("A2", "Generated On", formats["section"])
+    sheet.write("B2", datetime.now().strftime("%d-%m-%Y %I:%M %p"), formats["text"])
+
+    stock_rows = chart_dict_to_rows(get_stock_wise_dividend_data())
+    monthly_rows = chart_dict_to_rows(get_monthly_dividend_data())
+    yearly_rows = chart_dict_to_rows(get_yearly_dividend_data())
+    tax_net_rows = chart_dict_to_rows(get_tax_vs_net_data())
+
+    write_chart_source_table(
+        sheet,
+        "A4",
+        "Stock-wise Dividend Data",
+        ["Symbol", "Net Amount"],
+        stock_rows,
+        formats
+    )
+
+    write_chart_source_table(
+        sheet,
+        "D4",
+        "Monthly Dividend Data",
+        ["Month", "Net Amount"],
+        monthly_rows,
+        formats
+    )
+
+    write_chart_source_table(
+        sheet,
+        "A22",
+        "Yearly Dividend Data",
+        ["Year", "Net Amount"],
+        yearly_rows,
+        formats
+    )
+
+    write_chart_source_table(
+        sheet,
+        "D22",
+        "Tax vs Net Data",
+        ["Category", "Amount"],
+        tax_net_rows,
+        formats
+    )
+
+    create_excel_pie_chart(
+        workbook,
+        sheet,
+        "Stock-wise Dividend Income",
+        "A6:A{}".format(5 + len(stock_rows)),
+        "B6:B{}".format(5 + len(stock_rows)),
+        "G4"
+    )
+
+    create_excel_bar_chart(
+        workbook,
+        sheet,
+        "Monthly Dividend Income",
+        "D6:D{}".format(5 + len(monthly_rows)),
+        "E6:E{}".format(5 + len(monthly_rows)),
+        "G20",
+        "Net Dividend Income"
+    )
+
+    create_excel_bar_chart(
+        workbook,
+        sheet,
+        "Yearly Dividend Income",
+        "A24:A{}".format(23 + len(yearly_rows)),
+        "B24:B{}".format(23 + len(yearly_rows)),
+        "G36",
+        "Net Dividend Income"
+    )
+
+    create_excel_pie_chart(
+        workbook,
+        sheet,
+        "Tax vs Net Received",
+        "D24:D{}".format(23 + len(tax_net_rows)),
+        "E24:E{}".format(23 + len(tax_net_rows)),
+        "G52"
+    )
+
+    sheet.set_column("A:A", 20)
+    sheet.set_column("B:B", 18)
+    sheet.set_column("D:D", 24)
+    sheet.set_column("E:E", 18)
+    sheet.set_column("G:J", 18)
+
+
+def chart_dict_to_rows(data):
+    """
+    Convert chart service dictionary to row list.
+    """
+
+    labels = data.get("labels", [])
+    values = data.get("values", [])
+
+    rows = []
+
+    for label, value in zip(labels, values):
+
+        value = safe_float(value)
+
+        if value > 0:
+            rows.append([str(label), value])
+
+    if not rows:
+        rows.append(["No Data", 0])
 
     return rows
 
@@ -925,7 +1309,7 @@ def create_pdf_pie_chart(title, rows, Drawing, String, Pie, colors):
     return drawing
 
 
-def create_pdf_bar_chart(title, rows, Drawing, String, VerticalBarChart, colors):
+def create_pdf_bar_chart(title, rows, Drawing, String, VerticalBarChart, colors, y_axis_name="Profit / Loss"):
     """
     Create PDF bar chart drawing.
     """
@@ -955,6 +1339,13 @@ def create_pdf_bar_chart(title, rows, Drawing, String, VerticalBarChart, colors)
         title,
         fontName="Helvetica-Bold",
         fontSize=12
+    ))
+
+    drawing.add(String(
+        50,
+        215,
+        y_axis_name,
+        fontSize=8
     ))
 
     chart = VerticalBarChart()
@@ -1003,9 +1394,9 @@ def get_pdf_color(index, colors):
 
     return palette[index % len(palette)]
 
-def create_combined_pdf_report(pdf_file, holdings, mutual_funds):
+def create_combined_pdf_report(pdf_file, holdings, mutual_funds, dividends):
     """
-    Create PDF report with PSX, Mutual Funds and Overall Wealth Summary.
+    Create PDF report with PSX, Mutual Funds, Dividends and Overall Wealth Summary.
     """
 
     try:
@@ -1049,11 +1440,27 @@ def create_combined_pdf_report(pdf_file, holdings, mutual_funds):
     story.append(create_pdf_table(get_overall_summary_rows(holdings, mutual_funds)))
     story.append(Spacer(1, 16))
 
+    story.append(Paragraph("Dividend Income Summary", styles["Heading2"]))
+    story.append(create_pdf_table(get_dividend_summary_pdf_rows()))
+    story.append(Spacer(1, 16))
+
+    story.append(Paragraph("Dividend Records", styles["Heading2"]))
+    story.append(create_pdf_table(get_dividend_records_pdf_rows(dividends)))
+    story.append(Spacer(1, 16))
+
     story.append(Paragraph("Charts & Visual Analytics", styles["Heading2"]))
 
     chart_drawings = create_pdf_chart_drawings(holdings, mutual_funds)
 
     for chart in chart_drawings:
+        story.append(chart)
+        story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Dividend Charts", styles["Heading2"]))
+
+    dividend_chart_drawings = create_pdf_dividend_chart_drawings()
+
+    for chart in dividend_chart_drawings:
         story.append(chart)
         story.append(Spacer(1, 12))
 
@@ -1234,6 +1641,146 @@ def get_mutual_fund_pdf_rows(mutual_funds):
     return rows
 
 
+
+def create_pdf_dividend_chart_drawings():
+    """
+    Create simple PDF chart drawings for dividend income.
+    """
+
+    try:
+        from reportlab.graphics.shapes import Drawing, String
+        from reportlab.graphics.charts.piecharts import Pie
+        from reportlab.graphics.charts.barcharts import VerticalBarChart
+        from reportlab.lib import colors
+
+    except Exception:
+        return []
+
+    drawings = []
+
+    stock_rows = chart_dict_to_rows(get_stock_wise_dividend_data())
+    monthly_rows = chart_dict_to_rows(get_monthly_dividend_data())
+    yearly_rows = chart_dict_to_rows(get_yearly_dividend_data())
+    tax_net_rows = chart_dict_to_rows(get_tax_vs_net_data())
+
+    stock_chart = create_pdf_pie_chart(
+        "Stock-wise Dividend Income",
+        stock_rows,
+        Drawing,
+        String,
+        Pie,
+        colors
+    )
+
+    if stock_chart:
+        drawings.append(stock_chart)
+
+    monthly_chart = create_pdf_bar_chart(
+        "Monthly Dividend Income",
+        monthly_rows,
+        Drawing,
+        String,
+        VerticalBarChart,
+        colors,
+        "Net Dividend Income"
+    )
+
+    if monthly_chart:
+        drawings.append(monthly_chart)
+
+    yearly_chart = create_pdf_bar_chart(
+        "Yearly Dividend Income",
+        yearly_rows,
+        Drawing,
+        String,
+        VerticalBarChart,
+        colors,
+        "Net Dividend Income"
+    )
+
+    if yearly_chart:
+        drawings.append(yearly_chart)
+
+    tax_net_chart = create_pdf_pie_chart(
+        "Tax vs Net Received",
+        tax_net_rows,
+        Drawing,
+        String,
+        Pie,
+        colors
+    )
+
+    if tax_net_chart:
+        drawings.append(tax_net_chart)
+
+    return drawings
+
+
+def get_dividend_summary_pdf_rows():
+    """
+    Return PDF rows for dividend income summary.
+    """
+
+    overall = get_income_summary()
+
+    return [
+        [
+            "Gross Dividend",
+            "Tax Deducted",
+            "Net Received",
+            "Total Records",
+        ],
+        [
+            format_money(overall["gross_amount"]),
+            format_money(overall["tax_amount"]),
+            format_money(overall["net_amount"]),
+            str(overall["total_records"]),
+        ],
+    ]
+
+
+def get_dividend_records_pdf_rows(dividends):
+    """
+    Return PDF rows for dividend records.
+    """
+
+    rows = [[
+        "Symbol",
+        "Shares",
+        "DPS",
+        "Gross",
+        "Tax",
+        "Net",
+        "Payment Date",
+    ]]
+
+    if not dividends:
+        rows.append([
+            "No Data",
+            "0",
+            format_money(0),
+            format_money(0),
+            format_money(0),
+            format_money(0),
+            "",
+        ])
+        return rows
+
+    for item in dividends:
+
+        rows.append([
+            str(safe_get(item, "symbol", "")).upper(),
+            format_quantity(safe_get(item, "shares", 0)),
+            format_money(safe_get(item, "dividend_per_share", 0)),
+            format_money(safe_get(item, "gross_amount", 0)),
+            format_money(safe_get(item, "tax_amount", 0)),
+            format_money(safe_get(item, "net_amount", 0)),
+            str(safe_get(item, "payment_date", "")),
+        ])
+
+    return rows
+
+
 def calculate_psx_total_investment(holdings):
     """
     Calculate PSX total investment.
@@ -1298,6 +1845,22 @@ def calculate_profit_percent(investment_value, profit_loss):
         return 0
 
     return profit_loss / investment_value
+
+
+
+def safe_get(item, key, default=None):
+    """
+    Safely read a value from dict-like rows, sqlite rows or objects.
+    """
+
+    try:
+        if hasattr(item, "get"):
+            return item.get(key, default)
+
+        return item[key]
+
+    except Exception:
+        return default
 
 
 def safe_float(value):
