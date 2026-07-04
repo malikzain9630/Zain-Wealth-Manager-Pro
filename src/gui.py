@@ -34,6 +34,7 @@ from services.settings_service import load_settings, update_settings
 from holding_dialog import HoldingDialog
 from price_update_dialog import PriceUpdateDialog
 from settings_dialog import SettingsDialog
+from mutual_fund_window import MutualFundWindow
 
 
 class SortableTableWidgetItem(QTableWidgetItem):
@@ -70,6 +71,7 @@ class MainWindow(QMainWindow):
         self.summary_labels = {}
         self.all_holdings = []
         self.settings = load_settings()
+        self.mutual_fund_window = None
 
         self.init_ui()
         self.apply_theme()
@@ -138,6 +140,7 @@ class MainWindow(QMainWindow):
             ("📂 Import Portfolio", self.import_portfolio),
             ("📈 Update Prices CSV", self.update_prices),
             ("✍ Manual Price Update", self.manual_price_update),
+            ("🏦 Mutual Funds", self.open_mutual_funds),
             ("📄 Excel / PDF Report", self.generate_reports),
             ("💾 Backup", self.backup_database),
             ("♻ Restore", self.restore_database),
@@ -821,6 +824,25 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Restore Error",
+                str(e)
+            )
+
+
+    def open_mutual_funds(self):
+
+        try:
+            self.mutual_fund_window = MutualFundWindow(self)
+            self.mutual_fund_window.show()
+
+            self.statusBar().showMessage(
+                "Mutual Funds Manager opened."
+            )
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Mutual Funds Error",
                 str(e)
             )
 
