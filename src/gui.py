@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
     QFrame,
+    QFileDialog,
 )
 
 from services.report_service import create_reports
@@ -26,6 +27,8 @@ from services.portfolio_service import (
     update_existing_holding,
     remove_holding,
 )
+from services.backup_service import create_backup, restore_backup
+from services.import_service import import_portfolio_csv
 from holding_dialog import HoldingDialog
 
 
@@ -45,6 +48,7 @@ class SortableTableWidgetItem(QTableWidgetItem):
 
             try:
                 return float(self.sort_value) < float(other.sort_value)
+
             except (ValueError, TypeError):
                 return str(self.sort_value) < str(other.sort_value)
 
@@ -86,11 +90,17 @@ class MainWindow(QMainWindow):
         """)
 
         summary_layout = self.create_summary_cards()
+
+        self.concentration_alert = QLabel("")
+        self.concentration_alert.setAlignment(Qt.AlignCenter)
+        self.concentration_alert.setMinimumHeight(35)
+
         search_layout = self.create_search_bar()
         self.table = self.create_table()
 
         content_layout.addWidget(heading)
         content_layout.addLayout(summary_layout)
+        content_layout.addWidget(self.concentration_alert)
         content_layout.addLayout(search_layout)
         content_layout.addWidget(self.table)
 
@@ -119,11 +129,11 @@ class MainWindow(QMainWindow):
             ("✏ Edit Holding", self.open_edit_dialog),
             ("🗑 Delete Holding", self.delete_selected_holding),
             ("🔄 Refresh", self.load_portfolio),
-            ("📂 Import Portfolio", None),
+            ("📂 Import Portfolio", self.import_portfolio),
             ("📈 Update Prices", None),
             ("📄 Excel / PDF Report", self.generate_reports),
-            ("💾 Backup", None),
-            ("♻ Restore", None),
+            ("💾 Backup", self.backup_database),
+            ("♻ Restore", self.restore_database),
             ("⚙ Settings", None),
             ("❌ Exit", self.close),
         ]
@@ -264,6 +274,7 @@ class MainWindow(QMainWindow):
 
             self.display_holdings(self.all_holdings)
             self.update_summary_cards(self.all_holdings)
+            self.update_concentration_alert(self.all_holdings)
 
             self.statusBar().showMessage(
                 f"Portfolio loaded successfully. Total Holdings: {len(self.all_holdings)}"
@@ -346,6 +357,102 @@ class MainWindow(QMainWindow):
             total += shares * current_price
 
         return total
+
+    def update_concentration_alert(self, holdings):
+
+        if not holdings:
+
+            self.concentration_alert.setText(
+                "ℹ No holdings available for concentration analysis."
+            )
+
+            self.concentration_alert.setStyleSheet("""
+                QLabel {
+                    font-size:14px;
+                    font-weight:bold;
+                    color:#555555;
+                    background-color:#f1f1f1;
+                    border:1px solid #dddddd;
+                    border-radius:6px;
+                    padding:6px;
+                }
+            """)
+
+            return
+
+        total_current_value = self.calculate_total_current_value(holdings)
+
+        if total_current_value <= 0:
+
+            self.concentration_alert.setText(
+                "ℹ Portfolio value is zero. Concentration analysis is not available."
+            )
+
+            self.concentration_alert.setStyleSheet("""
+                QLabel {
+                    font-size:14px;
+                    font-weight:bold;
+                    color:#555555;
+                    background-color:#f1f1f1;
+                    border:1px solid #dddddd;
+                    border-radius:6px;
+                    padding:6px;
+                }
+            """)
+
+            return
+
+        highest_symbol = ""
+        highest_allocation = 0
+
+        for item in holdings:
+
+            symbol = str(item["symbol"]).upper()
+            shares = float(item["shares"])
+            current_price = float(item["current_price"])
+
+            current_value = shares * current_price
+            allocation = (current_value / total_current_value) * 100
+
+            if allocation > highest_allocation:
+                highest_allocation = allocation
+                highest_symbol = symbol
+
+        if highest_allocation >= 30:
+
+            self.concentration_alert.setText(
+                f"⚠ Concentration Alert: {highest_symbol} is {highest_allocation:.2f}% of your PSX portfolio."
+            )
+
+            self.concentration_alert.setStyleSheet("""
+                QLabel {
+                    font-size:14px;
+                    font-weight:bold;
+                    color:#8a4b00;
+                    background-color:#fff3cd;
+                    border:1px solid #ffecb5;
+                    border-radius:6px;
+                    padding:6px;
+                }
+            """)
+
+        else:
+
+            self.concentration_alert.setText(
+                f"✅ Portfolio concentration looks balanced. Highest holding: {highest_symbol} at {highest_allocation:.2f}%."
+            )
+
+            self.concentration_alert.setStyleSheet("""
+                QLabel {
+                    font-size:14px;
+                    font-weight:bold;
+                    color:#0f5132;
+                    background-color:#d1e7dd;
+                    border:1px solid #badbcc;
+                    border-radius:6px;
+                    padding:6px;
+                }
+            """)
 
     def create_table_item(self, text, value):
 
@@ -487,6 +594,120 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Error",
+                str(e)
+            )
+
+    def import_portfolio(self):
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Portfolio CSV File",
+            "",
+            "CSV Files (*.csv)"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            result = import_portfolio_csv(file_path)
+
+            message = (
+                "Portfolio Import Completed.\n\n"
+                f"Added: {result['added']}\n"
+                f"Updated: {result['updated']}\n"
+                f"Skipped: {result['skipped']}"
+            )
+
+            if result["errors"]:
+                message += "\n\nErrors:\n"
+                message += "\n".join(result["errors"][:10])
+
+                if len(result["errors"]) > 10:
+                    message += f"\n...and {len(result['errors']) - 10} more errors."
+
+            QMessageBox.information(
+                self,
+                "Import Result",
+                message
+            )
+
+            self.load_portfolio()
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Import Error",
+                str(e)
+            )
+
+    def backup_database(self):
+
+        try:
+            backup_file = create_backup()
+
+            QMessageBox.information(
+                self,
+                "Backup Created",
+                f"Backup created successfully:\n\n{backup_file}"
+            )
+
+            self.statusBar().showMessage(
+                "Database backup created successfully."
+            )
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Backup Error",
+                str(e)
+            )
+
+    def restore_database(self):
+
+        confirm = QMessageBox.question(
+            self,
+            "Confirm Restore",
+            "Restoring backup will replace current database data.\n\nDo you want to continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if confirm != QMessageBox.Yes:
+            return
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Backup Database File",
+            "",
+            "Database Files (*.db *.sqlite *.sqlite3)"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            restored_path = restore_backup(file_path)
+
+            QMessageBox.information(
+                self,
+                "Restore Completed",
+                f"Database restored successfully:\n\n{restored_path}"
+            )
+
+            self.load_portfolio()
+
+            self.statusBar().showMessage(
+                "Database restored successfully."
+            )
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Restore Error",
                 str(e)
             )
 
