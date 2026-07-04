@@ -37,6 +37,7 @@ from settings_dialog import SettingsDialog
 from mutual_fund_window import MutualFundWindow
 from charts_window import ChartsWindow
 from dividend_window import DividendWindow
+from dividend_charts_window import DividendChartsWindow
 from services.mutual_fund_service import get_mutual_fund_summary
 
 
@@ -77,6 +78,7 @@ class MainWindow(QMainWindow):
         self.mutual_fund_window = None
         self.charts_window = None
         self.dividend_window = None
+        self.dividend_charts_window = None
 
         self.init_ui()
         self.apply_theme()
@@ -160,6 +162,7 @@ class MainWindow(QMainWindow):
             ("🏦 Mutual Funds", self.open_mutual_funds),
             ("📈 Charts", self.open_charts),
             ("💰 Dividends", self.open_dividends),
+            ("📊 Dividend Charts", self.open_dividend_charts),
             ("📄 Excel / PDF Report", self.generate_reports),
             ("💾 Backup", self.backup_database),
             ("♻ Restore", self.restore_database),
@@ -941,7 +944,6 @@ class MainWindow(QMainWindow):
                 str(e)
             )
 
-
     def open_mutual_funds(self):
 
         try:
@@ -959,7 +961,6 @@ class MainWindow(QMainWindow):
                 "Mutual Funds Error",
                 str(e)
             )
-
 
     def open_charts(self):
 
@@ -979,7 +980,6 @@ class MainWindow(QMainWindow):
                 str(e)
             )
 
-
     def open_dividends(self):
 
         try:
@@ -995,6 +995,25 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Dividend Tracker Error",
+                str(e)
+            )
+
+
+    def open_dividend_charts(self):
+
+        try:
+            self.dividend_charts_window = DividendChartsWindow(self)
+            self.dividend_charts_window.show()
+
+            self.statusBar().showMessage(
+                "Dividend Charts opened."
+            )
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Dividend Charts Error",
                 str(e)
             )
 
