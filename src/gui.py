@@ -29,6 +29,7 @@ from services.portfolio_service import (
 )
 from services.backup_service import create_backup, restore_backup
 from services.import_service import import_portfolio_csv
+from services.price_service import import_price_csv
 from holding_dialog import HoldingDialog
 
 
@@ -130,7 +131,7 @@ class MainWindow(QMainWindow):
             ("🗑 Delete Holding", self.delete_selected_holding),
             ("🔄 Refresh", self.load_portfolio),
             ("📂 Import Portfolio", self.import_portfolio),
-            ("📈 Update Prices", None),
+            ("📈 Update Prices", self.update_prices),
             ("📄 Excel / PDF Report", self.generate_reports),
             ("💾 Backup", self.backup_database),
             ("♻ Restore", self.restore_database),
@@ -639,6 +640,50 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Import Error",
+                str(e)
+            )
+
+    def update_prices(self):
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Prices CSV File",
+            "",
+            "CSV Files (*.csv)"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            result = import_price_csv(file_path)
+
+            message = (
+                "Price Update Completed.\n\n"
+                f"Updated: {result['updated']}\n"
+                f"Skipped: {result['skipped']}"
+            )
+
+            if result["errors"]:
+                message += "\n\nErrors:\n"
+                message += "\n".join(result["errors"][:10])
+
+                if len(result["errors"]) > 10:
+                    message += f"\n...and {len(result['errors']) - 10} more errors."
+
+            QMessageBox.information(
+                self,
+                "Price Update Result",
+                message
+            )
+
+            self.load_portfolio()
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Price Update Error",
                 str(e)
             )
 
