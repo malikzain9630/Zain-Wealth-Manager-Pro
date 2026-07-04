@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
     QFrame,
+    QFileDialog,
 )
 
 from services.settings_service import load_settings
@@ -27,6 +28,7 @@ from services.mutual_fund_service import (
     get_mutual_fund_summary,
     update_mutual_fund_nav,
 )
+from services.mutual_fund_nav_import_service import import_mutual_fund_nav_csv
 
 from mutual_fund_dialog import MutualFundDialog
 from mutual_fund_nav_dialog import MutualFundNavDialog
@@ -65,7 +67,7 @@ class MutualFundWindow(QWidget):
         self.funds = []
 
         self.setWindowTitle("Mutual Funds Manager")
-        self.resize(1150, 650)
+        self.resize(1200, 650)
 
         self.init_ui()
         self.load_funds()
@@ -159,6 +161,7 @@ class MutualFundWindow(QWidget):
         btn_edit = QPushButton("✏ Edit Mutual Fund")
         btn_delete = QPushButton("🗑 Delete Mutual Fund")
         btn_nav_update = QPushButton("✍ Manual NAV Update")
+        btn_nav_csv = QPushButton("📈 Update NAV CSV")
         btn_refresh = QPushButton("🔄 Refresh")
         btn_close = QPushButton("❌ Close")
 
@@ -167,6 +170,7 @@ class MutualFundWindow(QWidget):
             btn_edit,
             btn_delete,
             btn_nav_update,
+            btn_nav_csv,
             btn_refresh,
             btn_close,
         ]
@@ -179,6 +183,7 @@ class MutualFundWindow(QWidget):
         btn_edit.clicked.connect(self.open_edit_dialog)
         btn_delete.clicked.connect(self.delete_selected_fund)
         btn_nav_update.clicked.connect(self.manual_nav_update)
+        btn_nav_csv.clicked.connect(self.update_nav_from_csv)
         btn_refresh.clicked.connect(self.load_funds)
         btn_close.clicked.connect(self.close)
 
@@ -426,6 +431,50 @@ class MutualFundWindow(QWidget):
                     "NAV Update Error",
                     str(e)
                 )
+
+    def update_nav_from_csv(self):
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Mutual Fund NAV CSV File",
+            "",
+            "CSV Files (*.csv)"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            result = import_mutual_fund_nav_csv(file_path)
+
+            message = (
+                "Mutual Fund NAV CSV Update Completed.\n\n"
+                f"Updated: {result['updated']}\n"
+                f"Skipped: {result['skipped']}"
+            )
+
+            if result["errors"]:
+                message += "\n\nErrors:\n"
+                message += "\n".join(result["errors"][:10])
+
+                if len(result["errors"]) > 10:
+                    message += f"\n...and {len(result['errors']) - 10} more errors."
+
+            QMessageBox.information(
+                self,
+                "NAV CSV Update Result",
+                message
+            )
+
+            self.load_funds()
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "NAV CSV Update Error",
+                str(e)
+            )
 
     def delete_selected_fund(self):
 
