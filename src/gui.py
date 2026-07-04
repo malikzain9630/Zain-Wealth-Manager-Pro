@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QAbstractItemView,
     QHeaderView,
+    QFrame,
 )
 
 from services.report_service import create_reports
@@ -34,6 +35,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Zain Wealth Manager Pro")
         self.resize(1200, 700)
 
+        self.summary_labels = {}
+
         self.init_ui()
         self.load_portfolio()
 
@@ -46,10 +49,26 @@ class MainWindow(QMainWindow):
         central.setLayout(main_layout)
 
         sidebar = self.create_sidebar()
+
+        content_layout = QVBoxLayout()
+
+        heading = QLabel("📊 Portfolio Manager")
+        heading.setAlignment(Qt.AlignCenter)
+        heading.setStyleSheet("""
+            font-size:22px;
+            font-weight:bold;
+            padding:10px;
+        """)
+
+        summary_layout = self.create_summary_cards()
         self.table = self.create_table()
 
+        content_layout.addWidget(heading)
+        content_layout.addLayout(summary_layout)
+        content_layout.addWidget(self.table)
+
         main_layout.addLayout(sidebar, 1)
-        main_layout.addWidget(self.table, 4)
+        main_layout.addLayout(content_layout, 4)
 
         self.statusBar().showMessage("Ready")
 
@@ -97,6 +116,65 @@ class MainWindow(QMainWindow):
         sidebar.addStretch()
 
         return sidebar
+
+    def create_summary_cards(self):
+
+        layout = QHBoxLayout()
+
+        cards = [
+            ("Total Investment", "investment"),
+            ("Current Value", "current"),
+            ("Profit / Loss", "profit"),
+            ("Profit %", "profit_percent"),
+            ("Total Holdings", "holdings"),
+        ]
+
+        for title, key in cards:
+
+            card = self.create_card(title, key)
+            layout.addWidget(card)
+
+        return layout
+
+    def create_card(self, title, key):
+
+        card = QFrame()
+        card.setFrameShape(QFrame.StyledPanel)
+        card.setMinimumHeight(95)
+
+        card.setStyleSheet("""
+            QFrame {
+                border: 1px solid #cccccc;
+                border-radius: 8px;
+                background-color: #f8f9fa;
+            }
+        """)
+
+        layout = QVBoxLayout()
+        card.setLayout(layout)
+
+        title_label = QLabel(title)
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet("""
+            font-size:13px;
+            font-weight:bold;
+            color:#444444;
+        """)
+
+        value_label = QLabel("0")
+        value_label.setAlignment(Qt.AlignCenter)
+        value_label.setStyleSheet("""
+            font-size:17px;
+            font-weight:bold;
+            color:#000000;
+        """)
+
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+
+        self.summary_labels[key] = value_label
+
+        return card
 
     def create_table(self):
 
@@ -146,6 +224,8 @@ class MainWindow(QMainWindow):
                 self.table.setItem(row, 2, avg_price_item)
                 self.table.setItem(row, 3, current_price_item)
 
+            self.update_summary_cards(holdings)
+
             self.statusBar().showMessage(
                 f"Portfolio loaded successfully. Total Holdings: {len(holdings)}"
             )
@@ -157,6 +237,74 @@ class MainWindow(QMainWindow):
                 "Error",
                 f"Failed to load portfolio.\n\n{str(e)}"
             )
+
+    def update_summary_cards(self, holdings):
+
+        total_investment = 0
+        current_value = 0
+
+        for item in holdings:
+
+            shares = float(item["shares"])
+            avg_price = float(item["avg_price"])
+            current_price = float(item["current_price"])
+
+            total_investment += shares * avg_price
+            current_value += shares * current_price
+
+        profit = current_value - total_investment
+
+        if total_investment > 0:
+            profit_percent = (profit / total_investment) * 100
+        else:
+            profit_percent = 0
+
+        self.summary_labels["investment"].setText(
+            self.format_currency(total_investment)
+        )
+
+        self.summary_labels["current"].setText(
+            self.format_currency(current_value)
+        )
+
+        self.summary_labels["profit"].setText(
+            self.format_currency(profit)
+        )
+
+        self.summary_labels["profit_percent"].setText(
+            f"{profit_percent:.2f}%"
+        )
+
+        self.summary_labels["holdings"].setText(
+            str(len(holdings))
+        )
+
+        if profit >= 0:
+            self.summary_labels["profit"].setStyleSheet("""
+                font-size:17px;
+                font-weight:bold;
+                color:green;
+            """)
+            self.summary_labels["profit_percent"].setStyleSheet("""
+                font-size:17px;
+                font-weight:bold;
+                color:green;
+            """)
+        else:
+            self.summary_labels["profit"].setStyleSheet("""
+                font-size:17px;
+                font-weight:bold;
+                color:red;
+            """)
+            self.summary_labels["profit_percent"].setStyleSheet("""
+                font-size:17px;
+                font-weight:bold;
+                color:red;
+            """)
+
+    def format_currency(self, value):
+
+        return f"PKR {value:,.2f}"
 
     def generate_reports(self):
 
