@@ -35,6 +35,7 @@ from holding_dialog import HoldingDialog
 from price_update_dialog import PriceUpdateDialog
 from settings_dialog import SettingsDialog
 from mutual_fund_window import MutualFundWindow
+from services.mutual_fund_service import get_mutual_fund_summary
 
 
 class SortableTableWidgetItem(QTableWidgetItem):
@@ -99,6 +100,16 @@ class MainWindow(QMainWindow):
 
         summary_layout = self.create_summary_cards()
 
+        combined_summary_heading = QLabel("🌐 Overall Wealth Summary")
+        combined_summary_heading.setAlignment(Qt.AlignCenter)
+        combined_summary_heading.setStyleSheet("""
+            font-size:16px;
+            font-weight:bold;
+            padding:6px;
+        """)
+
+        combined_summary_layout = self.create_combined_summary_cards()
+
         self.concentration_alert = QLabel("")
         self.concentration_alert.setAlignment(Qt.AlignCenter)
         self.concentration_alert.setMinimumHeight(35)
@@ -108,6 +119,8 @@ class MainWindow(QMainWindow):
 
         content_layout.addWidget(heading)
         content_layout.addLayout(summary_layout)
+        content_layout.addWidget(combined_summary_heading)
+        content_layout.addLayout(combined_summary_layout)
         content_layout.addWidget(self.concentration_alert)
         content_layout.addLayout(search_layout)
         content_layout.addWidget(self.table)
@@ -174,6 +187,26 @@ class MainWindow(QMainWindow):
             ("Profit / Loss", "profit"),
             ("Profit %", "profit_percent"),
             ("Total Holdings", "holdings"),
+        ]
+
+        for title, key in cards:
+
+            card = self.create_card(title, key)
+            layout.addWidget(card)
+
+        return layout
+
+    def create_combined_summary_cards(self):
+
+        layout = QHBoxLayout()
+
+        cards = [
+            ("PSX Current Value", "combined_psx_current"),
+            ("MF Current Value", "combined_mf_current"),
+            ("Total Investment", "combined_investment"),
+            ("Total Current Value", "combined_current"),
+            ("Total Profit / Loss", "combined_profit"),
+            ("Total Profit %", "combined_profit_percent"),
         ]
 
         for title, key in cards:
@@ -275,6 +308,7 @@ class MainWindow(QMainWindow):
 
             self.display_holdings(self.all_holdings)
             self.update_summary_cards(self.all_holdings)
+            self.update_combined_summary_cards(self.all_holdings)
             self.update_concentration_alert(self.all_holdings)
 
             self.statusBar().showMessage(
@@ -513,6 +547,80 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Search cleared. Total Holdings: {len(self.all_holdings)}"
         )
+
+    def update_combined_summary_cards(self, holdings):
+
+        psx_investment = 0
+        psx_current = 0
+
+        for item in holdings:
+
+            shares = float(item["shares"])
+            avg_price = float(item["avg_price"])
+            current_price = float(item["current_price"])
+
+            psx_investment += shares * avg_price
+            psx_current += shares * current_price
+
+        try:
+            mutual_summary = get_mutual_fund_summary()
+
+            mutual_investment = float(mutual_summary.get("total_investment", 0))
+            mutual_current = float(mutual_summary.get("total_current", 0))
+
+        except Exception:
+            mutual_investment = 0
+            mutual_current = 0
+
+        combined_investment = psx_investment + mutual_investment
+        combined_current = psx_current + mutual_current
+        combined_profit = combined_current - combined_investment
+
+        if combined_investment > 0:
+            combined_profit_percent = (combined_profit / combined_investment) * 100
+        else:
+            combined_profit_percent = 0
+
+        self.summary_labels["combined_psx_current"].setText(
+            self.format_currency(psx_current)
+        )
+
+        self.summary_labels["combined_mf_current"].setText(
+            self.format_currency(mutual_current)
+        )
+
+        self.summary_labels["combined_investment"].setText(
+            self.format_currency(combined_investment)
+        )
+
+        self.summary_labels["combined_current"].setText(
+            self.format_currency(combined_current)
+        )
+
+        self.summary_labels["combined_profit"].setText(
+            self.format_currency(combined_profit)
+        )
+
+        self.summary_labels["combined_profit_percent"].setText(
+            f"{combined_profit_percent:.2f}%"
+        )
+
+        if combined_profit >= 0:
+            color = "green"
+        else:
+            color = "red"
+
+        self.summary_labels["combined_profit"].setStyleSheet(f"""
+            font-size:17px;
+            font-weight:bold;
+            color:{color};
+        """)
+
+        self.summary_labels["combined_profit_percent"].setStyleSheet(f"""
+            font-size:17px;
+            font-weight:bold;
+            color:{color};
+        """)
 
     def update_summary_cards(self, holdings):
 
