@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QMessageBox,
     QLabel,
+    QLineEdit,
     QTableWidget,
     QTableWidgetItem,
     QAbstractItemView,
@@ -25,7 +26,6 @@ from services.mutual_fund_service import (
     add_new_mutual_fund,
     update_existing_mutual_fund,
     remove_mutual_fund,
-    get_mutual_fund_summary,
     update_mutual_fund_nav,
 )
 from services.mutual_fund_nav_import_service import import_mutual_fund_nav_csv
@@ -67,7 +67,7 @@ class MutualFundWindow(QWidget):
         self.funds = []
 
         self.setWindowTitle("Mutual Funds Manager")
-        self.resize(1200, 650)
+        self.resize(1200, 680)
 
         self.init_ui()
         self.load_funds()
@@ -87,11 +87,13 @@ class MutualFundWindow(QWidget):
 
         summary_layout = self.create_summary_cards()
         button_layout = self.create_buttons()
+        search_layout = self.create_search_bar()
         self.table = self.create_table()
 
         main_layout.addWidget(heading)
         main_layout.addLayout(summary_layout)
         main_layout.addLayout(button_layout)
+        main_layout.addLayout(search_layout)
         main_layout.addWidget(self.table)
 
     def create_summary_cards(self):
@@ -189,6 +191,40 @@ class MutualFundWindow(QWidget):
 
         return layout
 
+    def create_search_bar(self):
+
+        layout = QHBoxLayout()
+
+        search_label = QLabel("Search Fund:")
+        search_label.setStyleSheet("""
+            font-size:14px;
+            font-weight:bold;
+        """)
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText(
+            "Type fund name e.g. KMIF, MIF, Meezan"
+        )
+        self.search_input.setMinimumHeight(35)
+        self.search_input.textChanged.connect(self.apply_filter)
+
+        clear_btn = QPushButton("Clear")
+        clear_btn.setMinimumHeight(35)
+        clear_btn.clicked.connect(self.clear_search)
+
+        self.search_result_label = QLabel("")
+        self.search_result_label.setStyleSheet("""
+            font-size:13px;
+            font-weight:bold;
+        """)
+
+        layout.addWidget(search_label)
+        layout.addWidget(self.search_input)
+        layout.addWidget(clear_btn)
+        layout.addWidget(self.search_result_label)
+
+        return layout
+
     def create_table(self):
 
         table = QTableWidget()
@@ -222,8 +258,11 @@ class MutualFundWindow(QWidget):
         try:
             self.funds = get_all_mutual_funds()
 
+            self.search_input.clear()
+
             self.display_funds(self.funds)
-            self.update_summary_cards()
+            self.update_summary_cards(self.funds)
+            self.update_search_result_label(self.funds)
 
         except Exception as e:
 
@@ -277,31 +316,81 @@ class MutualFundWindow(QWidget):
 
         self.table.setSortingEnabled(True)
 
-    def update_summary_cards(self):
+    def apply_filter(self):
 
-        summary = get_mutual_fund_summary()
+        search_text = self.search_input.text().strip().lower()
+
+        if not search_text:
+
+            filtered_funds = self.funds
+
+        else:
+
+            filtered_funds = []
+
+            for item in self.funds:
+
+                fund_name = str(item["fund"]).lower()
+
+                if search_text in fund_name:
+                    filtered_funds.append(item)
+
+        self.display_funds(filtered_funds)
+        self.update_summary_cards(filtered_funds)
+        self.update_search_result_label(filtered_funds)
+
+    def clear_search(self):
+
+        self.search_input.clear()
+
+        self.display_funds(self.funds)
+        self.update_summary_cards(self.funds)
+        self.update_search_result_label(self.funds)
+
+    def update_search_result_label(self, funds):
+
+        self.search_result_label.setText(
+            f"Showing: {len(funds)} / {len(self.funds)}"
+        )
+
+    def update_summary_cards(self, funds):
+
+        total_investment = 0
+        total_current = 0
+
+        for fund in funds:
+
+            total_investment += float(fund["investment_value"])
+            total_current += float(fund["current_value"])
+
+        profit_loss = total_current - total_investment
+
+        if total_investment > 0:
+            profit_percent = (profit_loss / total_investment) * 100
+        else:
+            profit_percent = 0
 
         self.summary_labels["investment"].setText(
-            self.format_currency(summary["total_investment"])
+            self.format_currency(total_investment)
         )
 
         self.summary_labels["current"].setText(
-            self.format_currency(summary["total_current"])
+            self.format_currency(total_current)
         )
 
         self.summary_labels["profit"].setText(
-            self.format_currency(summary["profit_loss"])
+            self.format_currency(profit_loss)
         )
 
         self.summary_labels["profit_percent"].setText(
-            f"{summary['profit_percent']:.2f}%"
+            f"{profit_percent:.2f}%"
         )
 
         self.summary_labels["funds"].setText(
-            str(summary["total_funds"])
+            str(len(funds))
         )
 
-        if summary["profit_loss"] >= 0:
+        if profit_loss >= 0:
             color = "green"
         else:
             color = "red"
