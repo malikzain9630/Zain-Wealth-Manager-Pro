@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QMessageBox,
     QLabel,
+    QLineEdit,
     QTableWidget,
     QTableWidgetItem,
     QAbstractItemView,
@@ -37,6 +38,7 @@ class MainWindow(QMainWindow):
         self.resize(1300, 750)
 
         self.summary_labels = {}
+        self.all_holdings = []
 
         self.init_ui()
         self.load_portfolio()
@@ -62,10 +64,12 @@ class MainWindow(QMainWindow):
         """)
 
         summary_layout = self.create_summary_cards()
+        search_layout = self.create_search_bar()
         self.table = self.create_table()
 
         content_layout.addWidget(heading)
         content_layout.addLayout(summary_layout)
+        content_layout.addLayout(search_layout)
         content_layout.addWidget(self.table)
 
         main_layout.addLayout(sidebar, 1)
@@ -177,6 +181,31 @@ class MainWindow(QMainWindow):
 
         return card
 
+    def create_search_bar(self):
+
+        layout = QHBoxLayout()
+
+        search_label = QLabel("Search Symbol:")
+        search_label.setStyleSheet("""
+            font-size:14px;
+            font-weight:bold;
+        """)
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Type symbol e.g. FFC, MEBL, SYS")
+        self.search_input.setMinimumHeight(35)
+        self.search_input.textChanged.connect(self.apply_filter)
+
+        clear_btn = QPushButton("Clear")
+        clear_btn.setMinimumHeight(35)
+        clear_btn.clicked.connect(self.clear_search)
+
+        layout.addWidget(search_label)
+        layout.addWidget(self.search_input)
+        layout.addWidget(clear_btn)
+
+        return layout
+
     def create_table(self):
 
         table = QTableWidget()
@@ -207,55 +236,13 @@ class MainWindow(QMainWindow):
     def load_portfolio(self):
 
         try:
-            holdings = get_all_holdings()
+            self.all_holdings = get_all_holdings()
 
-            self.table.setRowCount(0)
-            self.table.setRowCount(len(holdings))
-
-            for row, item in enumerate(holdings):
-
-                symbol = str(item["symbol"]).upper()
-                shares = float(item["shares"])
-                avg_price = float(item["avg_price"])
-                current_price = float(item["current_price"])
-
-                investment_value = shares * avg_price
-                current_value = shares * current_price
-                profit_loss = current_value - investment_value
-
-                if investment_value > 0:
-                    profit_percent = (profit_loss / investment_value) * 100
-                else:
-                    profit_percent = 0
-
-                row_items = [
-                    QTableWidgetItem(symbol),
-                    QTableWidgetItem(str(shares)),
-                    QTableWidgetItem(str(avg_price)),
-                    QTableWidgetItem(str(current_price)),
-                    QTableWidgetItem(self.format_currency(investment_value)),
-                    QTableWidgetItem(self.format_currency(current_value)),
-                    QTableWidgetItem(self.format_currency(profit_loss)),
-                    QTableWidgetItem(f"{profit_percent:.2f}%"),
-                ]
-
-                for column, table_item in enumerate(row_items):
-
-                    table_item.setTextAlignment(Qt.AlignCenter)
-
-                    if column in [6, 7]:
-
-                        if profit_loss >= 0:
-                            table_item.setForeground(QBrush(QColor("green")))
-                        else:
-                            table_item.setForeground(QBrush(QColor("red")))
-
-                    self.table.setItem(row, column, table_item)
-
-            self.update_summary_cards(holdings)
+            self.display_holdings(self.all_holdings)
+            self.update_summary_cards(self.all_holdings)
 
             self.statusBar().showMessage(
-                f"Portfolio loaded successfully. Total Holdings: {len(holdings)}"
+                f"Portfolio loaded successfully. Total Holdings: {len(self.all_holdings)}"
             )
 
         except Exception as e:
@@ -265,6 +252,85 @@ class MainWindow(QMainWindow):
                 "Error",
                 f"Failed to load portfolio.\n\n{str(e)}"
             )
+
+    def display_holdings(self, holdings):
+
+        self.table.setRowCount(0)
+        self.table.setRowCount(len(holdings))
+
+        for row, item in enumerate(holdings):
+
+            symbol = str(item["symbol"]).upper()
+            shares = float(item["shares"])
+            avg_price = float(item["avg_price"])
+            current_price = float(item["current_price"])
+
+            investment_value = shares * avg_price
+            current_value = shares * current_price
+            profit_loss = current_value - investment_value
+
+            if investment_value > 0:
+                profit_percent = (profit_loss / investment_value) * 100
+            else:
+                profit_percent = 0
+
+            row_items = [
+                QTableWidgetItem(symbol),
+                QTableWidgetItem(str(shares)),
+                QTableWidgetItem(str(avg_price)),
+                QTableWidgetItem(str(current_price)),
+                QTableWidgetItem(self.format_currency(investment_value)),
+                QTableWidgetItem(self.format_currency(current_value)),
+                QTableWidgetItem(self.format_currency(profit_loss)),
+                QTableWidgetItem(f"{profit_percent:.2f}%"),
+            ]
+
+            for column, table_item in enumerate(row_items):
+
+                table_item.setTextAlignment(Qt.AlignCenter)
+
+                if column in [6, 7]:
+
+                    if profit_loss >= 0:
+                        table_item.setForeground(QBrush(QColor("green")))
+                    else:
+                        table_item.setForeground(QBrush(QColor("red")))
+
+                self.table.setItem(row, column, table_item)
+
+    def apply_filter(self):
+
+        search_text = self.search_input.text().strip().upper()
+
+        if not search_text:
+
+            filtered_holdings = self.all_holdings
+
+        else:
+
+            filtered_holdings = []
+
+            for item in self.all_holdings:
+
+                symbol = str(item["symbol"]).upper()
+
+                if search_text in symbol:
+                    filtered_holdings.append(item)
+
+        self.display_holdings(filtered_holdings)
+
+        self.statusBar().showMessage(
+            f"Filtered Holdings: {len(filtered_holdings)} / {len(self.all_holdings)}"
+        )
+
+    def clear_search(self):
+
+        self.search_input.clear()
+        self.display_holdings(self.all_holdings)
+
+        self.statusBar().showMessage(
+            f"Search cleared. Total Holdings: {len(self.all_holdings)}"
+        )
 
     def update_summary_cards(self, holdings):
 
