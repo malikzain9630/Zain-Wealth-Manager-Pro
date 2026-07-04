@@ -82,6 +82,13 @@ def create_reports():
         formats
     )
 
+    create_charts_sheet(
+        workbook,
+        psx_holdings,
+        mutual_funds,
+        formats
+    )
+
     workbook.close()
 
     # Keep existing PDF report generation safe.
@@ -504,6 +511,498 @@ def create_overall_wealth_sheet(workbook, holdings, mutual_funds, formats):
     sheet.set_column("F:F", 12)
 
 
+
+def create_charts_sheet(workbook, holdings, mutual_funds, formats):
+    """
+    Create Excel charts sheet:
+        1. PSX Allocation
+        2. Mutual Funds Allocation
+        3. Overall Wealth Allocation
+        4. Profit / Loss Comparison
+    """
+
+    sheet = safe_add_worksheet(workbook, "Charts")
+
+    sheet.merge_range("A1:J1", "Charts & Visual Analytics", formats["title"])
+    sheet.write("A2", "Generated On", formats["section"])
+    sheet.write("B2", datetime.now().strftime("%d-%m-%Y %I:%M %p"), formats["text"])
+
+    psx_rows = get_psx_allocation_rows(holdings)
+    mutual_fund_rows = get_mutual_fund_allocation_rows(mutual_funds)
+    overall_rows = get_overall_allocation_rows(holdings, mutual_funds)
+    profit_loss_rows = get_profit_loss_rows(holdings, mutual_funds)
+
+    write_chart_source_table(
+        sheet,
+        "A4",
+        "PSX Allocation Data",
+        ["Symbol", "Current Value"],
+        psx_rows,
+        formats
+    )
+
+    write_chart_source_table(
+        sheet,
+        "D4",
+        "Mutual Funds Allocation Data",
+        ["Fund", "Current Value"],
+        mutual_fund_rows,
+        formats
+    )
+
+    write_chart_source_table(
+        sheet,
+        "A22",
+        "Overall Wealth Data",
+        ["Category", "Current Value"],
+        overall_rows,
+        formats
+    )
+
+    write_chart_source_table(
+        sheet,
+        "D22",
+        "Profit / Loss Data",
+        ["Category", "Profit / Loss"],
+        profit_loss_rows,
+        formats
+    )
+
+    create_excel_pie_chart(
+        workbook,
+        sheet,
+        "PSX Allocation",
+        "A6:A{}".format(5 + len(psx_rows)),
+        "B6:B{}".format(5 + len(psx_rows)),
+        "G4"
+    )
+
+    create_excel_pie_chart(
+        workbook,
+        sheet,
+        "Mutual Funds Allocation",
+        "D6:D{}".format(5 + len(mutual_fund_rows)),
+        "E6:E{}".format(5 + len(mutual_fund_rows)),
+        "G20"
+    )
+
+    create_excel_pie_chart(
+        workbook,
+        sheet,
+        "Overall Wealth Allocation",
+        "A24:A{}".format(23 + len(overall_rows)),
+        "B24:B{}".format(23 + len(overall_rows)),
+        "G36"
+    )
+
+    create_excel_bar_chart(
+        workbook,
+        sheet,
+        "Profit / Loss Comparison",
+        "D24:D{}".format(23 + len(profit_loss_rows)),
+        "E24:E{}".format(23 + len(profit_loss_rows)),
+        "G52"
+    )
+
+    sheet.set_column("A:A", 20)
+    sheet.set_column("B:B", 18)
+    sheet.set_column("D:D", 28)
+    sheet.set_column("E:E", 18)
+    sheet.set_column("G:J", 18)
+
+
+def write_chart_source_table(sheet, start_cell, title, headers, rows, formats):
+    """
+    Write source data for Excel charts.
+    """
+
+    start_row, start_col = cell_to_row_col(start_cell)
+
+    sheet.write(start_row, start_col, title, formats["section"])
+
+    for index, header in enumerate(headers):
+        sheet.write(start_row + 1, start_col + index, header, formats["header"])
+
+    if not rows:
+        sheet.write(start_row + 2, start_col, "No Data", formats["text"])
+        sheet.write_number(start_row + 2, start_col + 1, 0, formats["currency"])
+        return
+
+    for row_index, row_data in enumerate(rows, start=start_row + 2):
+        sheet.write(row_index, start_col, row_data[0], formats["text"])
+        sheet.write_number(row_index, start_col + 1, row_data[1], formats["currency"])
+
+
+def cell_to_row_col(cell):
+    """
+    Convert simple Excel cell reference to zero-based row/column.
+    Supports cells like A1, D22.
+    """
+
+    letters = ""
+    numbers = ""
+
+    for character in cell:
+
+        if character.isalpha():
+            letters += character.upper()
+        elif character.isdigit():
+            numbers += character
+
+    column = 0
+
+    for character in letters:
+        column = column * 26 + (ord(character) - ord("A") + 1)
+
+    return int(numbers) - 1, column - 1
+
+
+def create_excel_pie_chart(workbook, sheet, title, categories_range, values_range, insert_cell):
+    """
+    Add pie chart to Excel sheet.
+    """
+
+    chart = workbook.add_chart({"type": "pie"})
+
+    chart.add_series({
+        "name": title,
+        "categories": f"='Charts'!{categories_range}",
+        "values": f"='Charts'!{values_range}",
+        "data_labels": {
+            "percentage": True,
+            "category": True,
+            "leader_lines": True
+        },
+    })
+
+    chart.set_title({"name": title})
+    chart.set_style(10)
+    chart.set_size({
+        "width": 460,
+        "height": 300
+    })
+
+    sheet.insert_chart(insert_cell, chart)
+
+
+def create_excel_bar_chart(workbook, sheet, title, categories_range, values_range, insert_cell):
+    """
+    Add bar chart to Excel sheet.
+    """
+
+    chart = workbook.add_chart({"type": "column"})
+
+    chart.add_series({
+        "name": title,
+        "categories": f"='Charts'!{categories_range}",
+        "values": f"='Charts'!{values_range}",
+        "data_labels": {
+            "value": True
+        },
+    })
+
+    chart.set_title({"name": title})
+    chart.set_x_axis({"name": "Category"})
+    chart.set_y_axis({"name": "Profit / Loss"})
+    chart.set_style(11)
+    chart.set_size({
+        "width": 460,
+        "height": 300
+    })
+
+    sheet.insert_chart(insert_cell, chart)
+
+
+def get_psx_allocation_rows(holdings):
+    """
+    Return PSX allocation rows for charts.
+    """
+
+    rows = []
+
+    for item in holdings:
+
+        symbol = str(item["symbol"]).upper()
+        current_value = safe_float(item["shares"]) * safe_float(item["current_price"])
+
+        if current_value > 0:
+            rows.append([symbol, current_value])
+
+    return rows
+
+
+def get_mutual_fund_allocation_rows(mutual_funds):
+    """
+    Return mutual fund allocation rows for charts.
+    """
+
+    rows = []
+
+    for item in mutual_funds:
+
+        fund = str(item["fund"])
+        current_value = safe_float(item["current_value"])
+
+        if current_value > 0:
+            rows.append([fund, current_value])
+
+    return rows
+
+
+def get_overall_allocation_rows(holdings, mutual_funds):
+    """
+    Return overall wealth allocation rows.
+    """
+
+    psx_current = calculate_psx_total_current_value(holdings)
+    mf_current = calculate_mf_total_current_value(mutual_funds)
+
+    rows = []
+
+    if psx_current > 0:
+        rows.append(["PSX Portfolio", psx_current])
+
+    if mf_current > 0:
+        rows.append(["Mutual Funds", mf_current])
+
+    return rows
+
+
+def get_profit_loss_rows(holdings, mutual_funds):
+    """
+    Return profit/loss rows for charts.
+    """
+
+    psx_investment = calculate_psx_total_investment(holdings)
+    psx_current = calculate_psx_total_current_value(holdings)
+    psx_profit = psx_current - psx_investment
+
+    mf_investment = calculate_mf_total_investment(mutual_funds)
+    mf_current = calculate_mf_total_current_value(mutual_funds)
+    mf_profit = mf_current - mf_investment
+
+    rows = []
+
+    if psx_investment > 0 or psx_current > 0:
+        rows.append(["PSX Portfolio", psx_profit])
+
+    if mf_investment > 0 or mf_current > 0:
+        rows.append(["Mutual Funds", mf_profit])
+
+    return rows
+
+
+def create_pdf_chart_drawings(holdings, mutual_funds):
+    """
+    Create simple PDF chart drawings.
+    If ReportLab graphics are not available, return an empty list.
+    """
+
+    try:
+        from reportlab.graphics.shapes import Drawing, String
+        from reportlab.graphics.charts.piecharts import Pie
+        from reportlab.graphics.charts.barcharts import VerticalBarChart
+        from reportlab.lib import colors
+
+    except Exception:
+        return []
+
+    drawings = []
+
+    psx_rows = get_psx_allocation_rows(holdings)
+    mutual_fund_rows = get_mutual_fund_allocation_rows(mutual_funds)
+    overall_rows = get_overall_allocation_rows(holdings, mutual_funds)
+    profit_loss_rows = get_profit_loss_rows(holdings, mutual_funds)
+
+    psx_chart = create_pdf_pie_chart(
+        "PSX Allocation",
+        psx_rows,
+        Drawing,
+        String,
+        Pie,
+        colors
+    )
+
+    if psx_chart:
+        drawings.append(psx_chart)
+
+    mf_chart = create_pdf_pie_chart(
+        "Mutual Funds Allocation",
+        mutual_fund_rows,
+        Drawing,
+        String,
+        Pie,
+        colors
+    )
+
+    if mf_chart:
+        drawings.append(mf_chart)
+
+    overall_chart = create_pdf_pie_chart(
+        "Overall Wealth Allocation",
+        overall_rows,
+        Drawing,
+        String,
+        Pie,
+        colors
+    )
+
+    if overall_chart:
+        drawings.append(overall_chart)
+
+    profit_chart = create_pdf_bar_chart(
+        "Profit / Loss Comparison",
+        profit_loss_rows,
+        Drawing,
+        String,
+        VerticalBarChart,
+        colors
+    )
+
+    if profit_chart:
+        drawings.append(profit_chart)
+
+    return drawings
+
+
+def create_pdf_pie_chart(title, rows, Drawing, String, Pie, colors):
+    """
+    Create PDF pie chart drawing.
+    """
+
+    rows = rows[:8]
+
+    if not rows:
+        return None
+
+    labels = [str(row[0]) for row in rows]
+    values = [safe_float(row[1]) for row in rows]
+
+    if sum(values) <= 0:
+        return None
+
+    drawing = Drawing(720, 230)
+
+    drawing.add(String(
+        20,
+        205,
+        title,
+        fontName="Helvetica-Bold",
+        fontSize=12
+    ))
+
+    pie = Pie()
+    pie.x = 35
+    pie.y = 35
+    pie.width = 150
+    pie.height = 150
+    pie.data = values
+    pie.labels = [
+        f"{label} ({value / sum(values) * 100:.1f}%)"
+        for label, value in zip(labels, values)
+    ]
+
+    for index in range(len(values)):
+        pie.slices[index].fillColor = get_pdf_color(index, colors)
+
+    drawing.add(pie)
+
+    legend_x = 230
+    legend_y = 170
+
+    for index, label in enumerate(labels):
+
+        value = values[index]
+        percent = value / sum(values) * 100
+
+        drawing.add(String(
+            legend_x,
+            legend_y - index * 18,
+            f"{label}: {format_money(value)} ({percent:.1f}%)",
+            fontSize=8
+        ))
+
+    return drawing
+
+
+def create_pdf_bar_chart(title, rows, Drawing, String, VerticalBarChart, colors):
+    """
+    Create PDF bar chart drawing.
+    """
+
+    rows = rows[:6]
+
+    if not rows:
+        return None
+
+    labels = [str(row[0]) for row in rows]
+    values = [safe_float(row[1]) for row in rows]
+
+    if not values:
+        return None
+
+    max_value = max(values)
+    min_value = min(values)
+
+    if max_value == 0 and min_value == 0:
+        return None
+
+    drawing = Drawing(720, 260)
+
+    drawing.add(String(
+        20,
+        235,
+        title,
+        fontName="Helvetica-Bold",
+        fontSize=12
+    ))
+
+    chart = VerticalBarChart()
+    chart.x = 50
+    chart.y = 55
+    chart.height = 150
+    chart.width = 560
+    chart.data = [values]
+    chart.categoryAxis.categoryNames = labels
+
+    value_min = min(0, min_value)
+    value_max = max(0, max_value)
+
+    if value_min == value_max:
+        value_max = value_min + 1
+
+    chart.valueAxis.valueMin = value_min
+    chart.valueAxis.valueMax = value_max
+    chart.valueAxis.valueStep = (value_max - value_min) / 4
+
+    chart.bars[0].fillColor = colors.HexColor("#4472C4")
+    chart.categoryAxis.labels.angle = 0
+    chart.categoryAxis.labels.fontSize = 7
+    chart.valueAxis.labels.fontSize = 7
+
+    drawing.add(chart)
+
+    return drawing
+
+
+def get_pdf_color(index, colors):
+    """
+    Return PDF chart color.
+    """
+
+    palette = [
+        colors.HexColor("#4472C4"),
+        colors.HexColor("#ED7D31"),
+        colors.HexColor("#A5A5A5"),
+        colors.HexColor("#FFC000"),
+        colors.HexColor("#5B9BD5"),
+        colors.HexColor("#70AD47"),
+        colors.HexColor("#264478"),
+        colors.HexColor("#9E480E"),
+    ]
+
+    return palette[index % len(palette)]
+
 def create_combined_pdf_report(pdf_file, holdings, mutual_funds):
     """
     Create PDF report with PSX, Mutual Funds and Overall Wealth Summary.
@@ -549,6 +1048,14 @@ def create_combined_pdf_report(pdf_file, holdings, mutual_funds):
     story.append(Paragraph("Overall Wealth Summary", styles["Heading2"]))
     story.append(create_pdf_table(get_overall_summary_rows(holdings, mutual_funds)))
     story.append(Spacer(1, 16))
+
+    story.append(Paragraph("Charts & Visual Analytics", styles["Heading2"]))
+
+    chart_drawings = create_pdf_chart_drawings(holdings, mutual_funds)
+
+    for chart in chart_drawings:
+        story.append(chart)
+        story.append(Spacer(1, 12))
 
     story.append(Paragraph("PSX Portfolio", styles["Heading2"]))
     story.append(create_pdf_table(get_psx_pdf_rows(holdings)))
