@@ -41,9 +41,9 @@ def get_portfolio():
         portfolio.append({
             "symbol": row[0],
             "shares": row[1],
-            "avg": row[2],
-            "current": row[3]
-        })
+            "avg_price": row[2],
+        "current_price": row[3]
+    })
 
     return portfolio
 
