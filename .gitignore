@@ -16,3 +16,12 @@ output/
 config/settings.json
 __pycache__/
 *.pyc
+@"
+backups/
+output/
+config/settings.json
+__pycache__/
+*.pyc
+wealth_manager.db
+*.db
+"@ | Out-File -Encoding utf8 .gitignore
