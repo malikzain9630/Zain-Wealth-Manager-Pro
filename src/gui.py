@@ -57,7 +57,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Zain Wealth Manager Pro")
-        self.resize(1300, 750)
+        self.resize(1400, 750)
 
         self.summary_labels = {}
         self.all_holdings = []
@@ -232,7 +232,7 @@ class MainWindow(QMainWindow):
 
         table = QTableWidget()
 
-        table.setColumnCount(8)
+        table.setColumnCount(9)
 
         table.setHorizontalHeaderLabels([
             "Symbol",
@@ -243,6 +243,7 @@ class MainWindow(QMainWindow):
             "Current Value",
             "Profit / Loss",
             "Profit %",
+            "Allocation %",
         ])
 
         table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -280,6 +281,8 @@ class MainWindow(QMainWindow):
 
         self.table.setSortingEnabled(False)
 
+        total_current_value = self.calculate_total_current_value(self.all_holdings)
+
         self.table.setRowCount(0)
         self.table.setRowCount(len(holdings))
 
@@ -299,6 +302,11 @@ class MainWindow(QMainWindow):
             else:
                 profit_percent = 0
 
+            if total_current_value > 0:
+                allocation_percent = (current_value / total_current_value) * 100
+            else:
+                allocation_percent = 0
+
             row_items = [
                 self.create_table_item(symbol, symbol),
                 self.create_table_item(self.format_quantity(shares), shares),
@@ -308,6 +316,7 @@ class MainWindow(QMainWindow):
                 self.create_table_item(self.format_currency(current_value), current_value),
                 self.create_table_item(self.format_currency(profit_loss), profit_loss),
                 self.create_table_item(f"{profit_percent:.2f}%", profit_percent),
+                self.create_table_item(f"{allocation_percent:.2f}%", allocation_percent),
             ]
 
             for column, table_item in enumerate(row_items):
@@ -324,6 +333,19 @@ class MainWindow(QMainWindow):
                 self.table.setItem(row, column, table_item)
 
         self.table.setSortingEnabled(True)
+
+    def calculate_total_current_value(self, holdings):
+
+        total = 0
+
+        for item in holdings:
+
+            shares = float(item["shares"])
+            current_price = float(item["current_price"])
+
+            total += shares * current_price
+
+        return total
 
     def create_table_item(self, text, value):
 
