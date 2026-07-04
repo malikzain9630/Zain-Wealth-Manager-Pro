@@ -12,10 +12,18 @@ from PySide6.QtWidgets import (
     QLabel,
     QTableWidget,
     QTableWidgetItem,
+    QAbstractItemView,
+    QHeaderView,
 )
 
 from services.report_service import create_reports
-from services.portfolio_service import get_all_holdings
+from services.portfolio_service import (
+    get_all_holdings,
+    add_new_holding,
+    update_existing_holding,
+    remove_holding,
+)
+from holding_dialog import HoldingDialog
 
 
 class MainWindow(QMainWindow):
@@ -26,15 +34,26 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Zain Wealth Manager Pro")
         self.resize(1200, 700)
 
-        # ================= Main Widget =================
+        self.init_ui()
+        self.load_portfolio()
+
+    def init_ui(self):
 
         central = QWidget()
         self.setCentralWidget(central)
 
-        layout = QHBoxLayout()
-        central.setLayout(layout)
+        main_layout = QHBoxLayout()
+        central.setLayout(main_layout)
 
-        # ================= Sidebar =================
+        sidebar = self.create_sidebar()
+        self.table = self.create_table()
+
+        main_layout.addLayout(sidebar, 1)
+        main_layout.addWidget(self.table, 4)
+
+        self.statusBar().showMessage("Ready")
+
+    def create_sidebar(self):
 
         sidebar = QVBoxLayout()
 
@@ -49,64 +68,109 @@ class MainWindow(QMainWindow):
         sidebar.addWidget(title)
 
         buttons = [
-            "📊 Dashboard",
-            "📂 Import Portfolio",
-            "📈 Update Prices",
-            "📄 Excel Report",
-            "📑 PDF Report",
-            "💾 Backup",
-            "♻ Restore",
-            "⚙ Settings",
-            "❌ Exit",
+            ("📊 Dashboard", None),
+            ("➕ Add Holding", self.open_add_dialog),
+            ("✏ Edit Holding", self.open_edit_dialog),
+            ("🗑 Delete Holding", self.delete_selected_holding),
+            ("🔄 Refresh", self.load_portfolio),
+            ("📂 Import Portfolio", None),
+            ("📈 Update Prices", None),
+            ("📄 Excel / PDF Report", self.generate_reports),
+            ("💾 Backup", None),
+            ("♻ Restore", None),
+            ("⚙ Settings", None),
+            ("❌ Exit", self.close),
         ]
 
-        for text in buttons:
+        for text, action in buttons:
 
             btn = QPushButton(text)
             btn.setMinimumHeight(45)
 
-            if text == "📄 Excel Report":
-                btn.clicked.connect(self.generate_excel)
-
-            elif text == "❌ Exit":
-                btn.clicked.connect(self.close)
+            if action:
+                btn.clicked.connect(action)
+            else:
+                btn.setEnabled(False)
 
             sidebar.addWidget(btn)
 
         sidebar.addStretch()
 
-        # ================= Portfolio Table =================
+        return sidebar
 
-        self.table = QTableWidget()
+    def create_table(self):
 
-        self.table.setColumnCount(4)
+        table = QTableWidget()
 
-        self.table.setHorizontalHeaderLabels([
+        table.setColumnCount(4)
+
+        table.setHorizontalHeaderLabels([
             "Symbol",
             "Shares",
             "Average Price",
-            "Current Price"
+            "Current Price",
         ])
 
-        # Layout
+        table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SingleSelection)
+        table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        table.setAlternatingRowColors(True)
 
-        layout.addLayout(sidebar, 1)
-        layout.addWidget(self.table, 4)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        table.verticalHeader().setVisible(False)
 
-        self.load_portfolio()
+        return table
 
-    # ==================================================
-
-    def generate_excel(self):
+    def load_portfolio(self):
 
         try:
+            holdings = get_all_holdings()
 
+            self.table.setRowCount(0)
+            self.table.setRowCount(len(holdings))
+
+            for row, item in enumerate(holdings):
+
+                symbol_item = QTableWidgetItem(str(item["symbol"]))
+                shares_item = QTableWidgetItem(str(item["shares"]))
+                avg_price_item = QTableWidgetItem(str(item["avg_price"]))
+                current_price_item = QTableWidgetItem(str(item["current_price"]))
+
+                symbol_item.setTextAlignment(Qt.AlignCenter)
+                shares_item.setTextAlignment(Qt.AlignCenter)
+                avg_price_item.setTextAlignment(Qt.AlignCenter)
+                current_price_item.setTextAlignment(Qt.AlignCenter)
+
+                self.table.setItem(row, 0, symbol_item)
+                self.table.setItem(row, 1, shares_item)
+                self.table.setItem(row, 2, avg_price_item)
+                self.table.setItem(row, 3, current_price_item)
+
+            self.statusBar().showMessage(
+                f"Portfolio loaded successfully. Total Holdings: {len(holdings)}"
+            )
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to load portfolio.\n\n{str(e)}"
+            )
+
+    def generate_reports(self):
+
+        try:
             create_reports()
 
             QMessageBox.information(
                 self,
                 "Success",
-                "Excel & PDF Reports Generated Successfully!"
+                "Excel and PDF Reports Generated Successfully!"
+            )
+
+            self.statusBar().showMessage(
+                "Reports generated successfully."
             )
 
         except Exception as e:
@@ -117,39 +181,159 @@ class MainWindow(QMainWindow):
                 str(e)
             )
 
-    # ==================================================
+    def open_add_dialog(self):
 
-    def load_portfolio(self):
+        dialog = HoldingDialog(self)
 
-        holdings = get_all_holdings()
+        if dialog.exec():
 
-        self.table.setRowCount(len(holdings))
+            try:
+                data = dialog.get_data()
 
-        for row, item in enumerate(holdings):
+                add_new_holding(
+                    data["symbol"],
+                    data["shares"],
+                    data["avg_price"],
+                    data["current_price"]
+                )
 
-            self.table.setItem(
-                row,
-                0,
-                QTableWidgetItem(str(item["symbol"]))
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    "Holding added successfully."
+                )
+
+                self.load_portfolio()
+
+            except Exception as e:
+
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    str(e)
+                )
+
+    def open_edit_dialog(self):
+
+        selected = self.get_selected_holding()
+
+        if not selected:
+            QMessageBox.warning(
+                self,
+                "No Selection",
+                "Please select a holding to edit."
+            )
+            return
+
+        dialog = HoldingDialog(self, selected)
+
+        if dialog.exec():
+
+            try:
+                data = dialog.get_data()
+
+                update_existing_holding(
+                    data["symbol"],
+                    data["shares"],
+                    data["avg_price"],
+                    data["current_price"]
+                )
+
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    "Holding updated successfully."
+                )
+
+                self.load_portfolio()
+
+            except Exception as e:
+
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    str(e)
+                )
+
+    def delete_selected_holding(self):
+
+        selected = self.get_selected_holding()
+
+        if not selected:
+            QMessageBox.warning(
+                self,
+                "No Selection",
+                "Please select a holding to delete."
+            )
+            return
+
+        symbol = selected["symbol"]
+
+        confirm = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Are you sure you want to delete {symbol}?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if confirm != QMessageBox.Yes:
+            return
+
+        try:
+            remove_holding(symbol)
+
+            QMessageBox.information(
+                self,
+                "Success",
+                f"{symbol} deleted successfully."
             )
 
-            self.table.setItem(
-                row,
-                1,
-                QTableWidgetItem(str(item["shares"]))
+            self.load_portfolio()
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Error",
+                str(e)
             )
 
-            self.table.setItem(
-                row,
-                2,
-                QTableWidgetItem(str(item["avg_price"]))
-            )
+    def get_selected_holding(self):
 
-            self.table.setItem(
-                row,
-                3,
-                QTableWidgetItem(str(item["current_price"]))
+        selected_row = self.table.currentRow()
+
+        if selected_row < 0:
+            return None
+
+        symbol_item = self.table.item(selected_row, 0)
+        shares_item = self.table.item(selected_row, 1)
+        avg_price_item = self.table.item(selected_row, 2)
+        current_price_item = self.table.item(selected_row, 3)
+
+        if (
+            symbol_item is None
+            or shares_item is None
+            or avg_price_item is None
+            or current_price_item is None
+        ):
+            return None
+
+        try:
+            return {
+                "symbol": symbol_item.text().strip().upper(),
+                "shares": float(shares_item.text()),
+                "avg_price": float(avg_price_item.text()),
+                "current_price": float(current_price_item.text()),
+            }
+
+        except ValueError:
+            QMessageBox.warning(
+                self,
+                "Invalid Data",
+                "Selected holding contains invalid numeric data."
             )
+            return None
 
 
 if __name__ == "__main__":

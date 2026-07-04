@@ -28,24 +28,24 @@ def get_portfolio():
     cur.execute("""
         SELECT symbol, shares, avg_price, current_price
         FROM portfolio
+        ORDER BY symbol
     """)
 
     rows = cur.fetchall()
-
     conn.close()
 
     portfolio = []
 
     for row in rows:
-
         portfolio.append({
             "symbol": row[0],
             "shares": row[1],
             "avg_price": row[2],
-        "current_price": row[3]
-    })
+            "current_price": row[3]
+        })
 
     return portfolio
+
 
 def update_holding(symbol, shares, avg_price, current_price):
 
@@ -54,10 +54,10 @@ def update_holding(symbol, shares, avg_price, current_price):
 
     cur.execute("""
         UPDATE portfolio
-        SET shares=?,
-            avg_price=?,
-            current_price=?
-        WHERE symbol=?
+        SET shares = ?,
+            avg_price = ?,
+            current_price = ?
+        WHERE symbol = ?
     """, (shares, avg_price, current_price, symbol))
 
     conn.commit()
@@ -69,10 +69,10 @@ def delete_holding(symbol):
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute(
-        "DELETE FROM portfolio WHERE symbol=?",
-        (symbol,)
-    )
+    cur.execute("""
+        DELETE FROM portfolio
+        WHERE symbol = ?
+    """, (symbol,))
 
     conn.commit()
     conn.close()

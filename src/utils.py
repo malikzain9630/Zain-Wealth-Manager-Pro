@@ -2,23 +2,34 @@
 Utility Functions
 """
 
-from data.portfolio import PORTFOLIO
-from portfolio_db import get_portfolio
+from datetime import datetime
 
-PORTFOLIO = get_portfolio()
+from portfolio_db import get_portfolio
 from data.mutual_funds import MUTUAL_FUNDS
 from data.pf import PF_DATA
 from data.pension import PENSION_DATA
+from data.dividends import DIVIDENDS
+from data.goals import GOALS
+from data.performance import PERFORMANCE
+from data.transactions import TRANSACTIONS
+from data.networth_history import NET_WORTH_HISTORY
+
 
 def get_summary():
+
+    portfolio = get_portfolio()
 
     psx_investment = 0
     psx_current = 0
 
-    for stock in PORTFOLIO:
+    for stock in portfolio:
 
-        invest = stock["shares"] * stock["avg"]
-        current = stock["shares"] * stock["current"]
+        shares = float(stock["shares"])
+        avg_price = float(stock["avg_price"])
+        current_price = float(stock["current_price"])
+
+        invest = shares * avg_price
+        current = shares * current_price
 
         psx_investment += invest
         psx_current += current
@@ -37,40 +48,30 @@ def get_summary():
         + provident_fund
         + pension
     )
+
     asset_allocation = {
-
         "PSX": round(psx_current, 2),
-
         "Mutual Funds": round(mutual_total, 2),
-
         "Provident Fund": round(provident_fund, 2),
-
         "Pension": round(pension, 2)
-
     }
+
     return {
-
-        "net_worth": round(net_worth,2),
-
-        "investment": round(psx_investment+mutual_total,2),
-
-        "current": round(psx_current+mutual_total,2),
-
-        "profit": round(psx_profit,2),
-
-        "mutual": round(mutual_total,2),
-
-        "pf": round(provident_fund,2),
-
-        "pension": round(pension,2),
-
+        "net_worth": round(net_worth, 2),
+        "investment": round(psx_investment + mutual_total, 2),
+        "current": round(psx_current + mutual_total, 2),
+        "profit": round(psx_profit, 2),
+        "mutual": round(mutual_total, 2),
+        "pf": round(provident_fund, 2),
+        "pension": round(pension, 2),
         "allocation": asset_allocation
-
     }
+
 
 def pf_projection():
 
     balance = PF_DATA["current_balance"]
+
     monthly = (
         PF_DATA["employee_monthly"]
         + PF_DATA["employer_monthly"]
@@ -93,6 +94,7 @@ def pf_projection():
 
     return projection
 
+
 def pension_projection():
 
     current = PENSION_DATA["current_value"]
@@ -110,32 +112,23 @@ def pension_projection():
         balance = (balance + monthly * 12) * (1 + rate)
 
         projection.append((
-
             2026 + year,
-
             round(balance, 2)
-
         ))
 
     return projection
+
 
 def get_asset_allocation():
 
     summary = get_summary()
 
     return [
-
         ("PSX", summary["current"] - summary["mutual"]),
-
         ("Mutual Funds", summary["mutual"]),
-
         ("Provident Fund", summary["pf"]),
-
         ("Pension", summary["pension"])
-
     ]
-
-from data.dividends import DIVIDENDS
 
 
 def get_dividend_summary():
@@ -143,9 +136,11 @@ def get_dividend_summary():
     total = 0
 
     for item in DIVIDENDS:
+
         total += item["shares"] * item["dividend_per_share"]
 
     return round(total, 2)
+
 
 def get_health_score():
 
@@ -153,7 +148,6 @@ def get_health_score():
 
     score = 0
 
-    # Net Worth
     if summary["net_worth"] >= 500000:
         score += 30
     elif summary["net_worth"] >= 250000:
@@ -161,7 +155,6 @@ def get_health_score():
     else:
         score += 10
 
-    # Diversification
     allocation = summary["allocation"]
 
     active_assets = sum(
@@ -170,15 +163,12 @@ def get_health_score():
 
     score += active_assets * 10
 
-    # Profitability
     if summary["profit"] > 0:
         score += 20
 
-    # Mutual Funds
     if summary["mutual"] > 0:
         score += 10
 
-    # Provident Fund
     if summary["pf"] > 0:
         score += 10
 
@@ -187,54 +177,41 @@ def get_health_score():
 
     return score
 
-from datetime import datetime
-from data.goals import GOALS
-
 
 def get_goal_progress():
 
     summary = get_summary()
 
     current_net_worth = summary["net_worth"]
+
     target = GOALS["target_net_worth"]
 
     progress = (current_net_worth / target) * 100
 
     current_year = datetime.now().year
+
     years_remaining = max(
         GOALS["target_year"] - current_year,
         0
     )
 
     return {
-
         "target": round(target, 2),
-
         "current": round(current_net_worth, 2),
-
         "progress": round(progress, 2),
-
         "years_remaining": years_remaining,
-
         "monthly_investment": GOALS["current_monthly_investment"]
-
     }
-
-from data.performance import PERFORMANCE
 
 
 def get_performance():
 
     return PERFORMANCE
 
-from data.transactions import TRANSACTIONS
-
 
 def get_transactions():
 
     return TRANSACTIONS
-
-from data.networth_history import NET_WORTH_HISTORY
 
 
 def get_networth_history():
