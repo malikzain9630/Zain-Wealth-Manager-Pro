@@ -1,6 +1,7 @@
 import sys
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QBrush
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -33,7 +34,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Zain Wealth Manager Pro")
-        self.resize(1200, 700)
+        self.resize(1300, 750)
 
         self.summary_labels = {}
 
@@ -68,7 +69,7 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self.table)
 
         main_layout.addLayout(sidebar, 1)
-        main_layout.addLayout(content_layout, 4)
+        main_layout.addLayout(content_layout, 5)
 
         self.statusBar().showMessage("Ready")
 
@@ -180,13 +181,17 @@ class MainWindow(QMainWindow):
 
         table = QTableWidget()
 
-        table.setColumnCount(4)
+        table.setColumnCount(8)
 
         table.setHorizontalHeaderLabels([
             "Symbol",
             "Shares",
             "Average Price",
             "Current Price",
+            "Investment Value",
+            "Current Value",
+            "Profit / Loss",
+            "Profit %",
         ])
 
         table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -209,20 +214,43 @@ class MainWindow(QMainWindow):
 
             for row, item in enumerate(holdings):
 
-                symbol_item = QTableWidgetItem(str(item["symbol"]))
-                shares_item = QTableWidgetItem(str(item["shares"]))
-                avg_price_item = QTableWidgetItem(str(item["avg_price"]))
-                current_price_item = QTableWidgetItem(str(item["current_price"]))
+                symbol = str(item["symbol"]).upper()
+                shares = float(item["shares"])
+                avg_price = float(item["avg_price"])
+                current_price = float(item["current_price"])
 
-                symbol_item.setTextAlignment(Qt.AlignCenter)
-                shares_item.setTextAlignment(Qt.AlignCenter)
-                avg_price_item.setTextAlignment(Qt.AlignCenter)
-                current_price_item.setTextAlignment(Qt.AlignCenter)
+                investment_value = shares * avg_price
+                current_value = shares * current_price
+                profit_loss = current_value - investment_value
 
-                self.table.setItem(row, 0, symbol_item)
-                self.table.setItem(row, 1, shares_item)
-                self.table.setItem(row, 2, avg_price_item)
-                self.table.setItem(row, 3, current_price_item)
+                if investment_value > 0:
+                    profit_percent = (profit_loss / investment_value) * 100
+                else:
+                    profit_percent = 0
+
+                row_items = [
+                    QTableWidgetItem(symbol),
+                    QTableWidgetItem(str(shares)),
+                    QTableWidgetItem(str(avg_price)),
+                    QTableWidgetItem(str(current_price)),
+                    QTableWidgetItem(self.format_currency(investment_value)),
+                    QTableWidgetItem(self.format_currency(current_value)),
+                    QTableWidgetItem(self.format_currency(profit_loss)),
+                    QTableWidgetItem(f"{profit_percent:.2f}%"),
+                ]
+
+                for column, table_item in enumerate(row_items):
+
+                    table_item.setTextAlignment(Qt.AlignCenter)
+
+                    if column in [6, 7]:
+
+                        if profit_loss >= 0:
+                            table_item.setForeground(QBrush(QColor("green")))
+                        else:
+                            table_item.setForeground(QBrush(QColor("red")))
+
+                    self.table.setItem(row, column, table_item)
 
             self.update_summary_cards(holdings)
 
