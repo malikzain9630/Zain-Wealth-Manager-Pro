@@ -30,8 +30,10 @@ from services.portfolio_service import (
 from services.backup_service import create_backup, restore_backup
 from services.import_service import import_portfolio_csv
 from services.price_service import import_price_csv, update_single_price
+from services.settings_service import load_settings, update_settings
 from holding_dialog import HoldingDialog
 from price_update_dialog import PriceUpdateDialog
+from settings_dialog import SettingsDialog
 
 
 class SortableTableWidgetItem(QTableWidgetItem):
@@ -67,8 +69,10 @@ class MainWindow(QMainWindow):
 
         self.summary_labels = {}
         self.all_holdings = []
+        self.settings = load_settings()
 
         self.init_ui()
+        self.apply_theme()
         self.load_portfolio()
 
     def init_ui(self):
@@ -137,7 +141,7 @@ class MainWindow(QMainWindow):
             ("📄 Excel / PDF Report", self.generate_reports),
             ("💾 Backup", self.backup_database),
             ("♻ Restore", self.restore_database),
-            ("⚙ Settings", None),
+            ("⚙ Settings", self.open_settings),
             ("❌ Exit", self.close),
         ]
 
@@ -179,16 +183,9 @@ class MainWindow(QMainWindow):
     def create_card(self, title, key):
 
         card = QFrame()
+        card.setObjectName("SummaryCard")
         card.setFrameShape(QFrame.StyledPanel)
         card.setMinimumHeight(95)
-
-        card.setStyleSheet("""
-            QFrame {
-                border: 1px solid #cccccc;
-                border-radius: 8px;
-                background-color: #f8f9fa;
-            }
-        """)
 
         layout = QVBoxLayout()
         card.setLayout(layout)
@@ -198,7 +195,6 @@ class MainWindow(QMainWindow):
         title_label.setStyleSheet("""
             font-size:13px;
             font-weight:bold;
-            color:#444444;
         """)
 
         value_label = QLabel("0")
@@ -206,7 +202,6 @@ class MainWindow(QMainWindow):
         value_label.setStyleSheet("""
             font-size:17px;
             font-weight:bold;
-            color:#000000;
         """)
 
         layout.addWidget(title_label)
@@ -361,7 +356,19 @@ class MainWindow(QMainWindow):
 
         return total
 
+    def get_concentration_limit(self):
+
+        try:
+            return float(
+                self.settings.get("concentration_limit", 30)
+            )
+
+        except (ValueError, TypeError):
+            return 30.0
+
     def update_concentration_alert(self, holdings):
+
+        limit = self.get_concentration_limit()
 
         if not holdings:
 
@@ -369,17 +376,7 @@ class MainWindow(QMainWindow):
                 "ℹ No holdings available for concentration analysis."
             )
 
-            self.concentration_alert.setStyleSheet("""
-                QLabel {
-                    font-size:14px;
-                    font-weight:bold;
-                    color:#555555;
-                    background-color:#f1f1f1;
-                    border:1px solid #dddddd;
-                    border-radius:6px;
-                    padding:6px;
-                }
-            """)
+            self.set_alert_style("neutral")
 
             return
 
@@ -391,17 +388,7 @@ class MainWindow(QMainWindow):
                 "ℹ Portfolio value is zero. Concentration analysis is not available."
             )
 
-            self.concentration_alert.setStyleSheet("""
-                QLabel {
-                    font-size:14px;
-                    font-weight:bold;
-                    color:#555555;
-                    background-color:#f1f1f1;
-                    border:1px solid #dddddd;
-                    border-radius:6px;
-                    padding:6px;
-                }
-            """)
+            self.set_alert_style("neutral")
 
             return
 
@@ -421,11 +408,27 @@ class MainWindow(QMainWindow):
                 highest_allocation = allocation
                 highest_symbol = symbol
 
-        if highest_allocation >= 30:
+        if highest_allocation >= limit:
 
             self.concentration_alert.setText(
-                f"⚠ Concentration Alert: {highest_symbol} is {highest_allocation:.2f}% of your PSX portfolio."
+                f"⚠ Concentration Alert: {highest_symbol} is {highest_allocation:.2f}% "
+                f"of your PSX portfolio. Limit: {limit:.0f}%."
             )
+
+            self.set_alert_style("warning")
+
+        else:
+
+            self.concentration_alert.setText(
+                f"✅ Portfolio concentration looks balanced. Highest holding: "
+                f"{highest_symbol} at {highest_allocation:.2f}%. Limit: {limit:.0f}%."
+            )
+
+            self.set_alert_style("success")
+
+    def set_alert_style(self, alert_type):
+
+        if alert_type == "warning":
 
             self.concentration_alert.setStyleSheet("""
                 QLabel {
@@ -439,11 +442,7 @@ class MainWindow(QMainWindow):
                 }
             """)
 
-        else:
-
-            self.concentration_alert.setText(
-                f"✅ Portfolio concentration looks balanced. Highest holding: {highest_symbol} at {highest_allocation:.2f}%."
-            )
+        elif alert_type == "success":
 
             self.concentration_alert.setStyleSheet("""
                 QLabel {
@@ -452,6 +451,20 @@ class MainWindow(QMainWindow):
                     color:#0f5132;
                     background-color:#d1e7dd;
                     border:1px solid #badbcc;
+                    border-radius:6px;
+                    padding:6px;
+                }
+            """)
+
+        else:
+
+            self.concentration_alert.setStyleSheet("""
+                QLabel {
+                    font-size:14px;
+                    font-weight:bold;
+                    color:#555555;
+                    background-color:#f1f1f1;
+                    border:1px solid #dddddd;
                     border-radius:6px;
                     padding:6px;
                 }
@@ -573,9 +586,22 @@ class MainWindow(QMainWindow):
 
         return f"{value:,.2f}"
 
+    def get_currency(self):
+
+        currency = str(
+            self.settings.get("currency", "PKR")
+        ).strip().upper()
+
+        if not currency:
+            currency = "PKR"
+
+        return currency
+
     def format_currency(self, value):
 
-        return f"PKR {value:,.2f}"
+        currency = self.get_currency()
+
+        return f"{currency} {value:,.2f}"
 
     def generate_reports(self):
 
@@ -797,6 +823,180 @@ class MainWindow(QMainWindow):
                 "Restore Error",
                 str(e)
             )
+
+    def open_settings(self):
+
+        dialog = SettingsDialog(self)
+
+        if dialog.exec():
+
+            try:
+                data = dialog.get_data()
+
+                self.settings = update_settings(data)
+
+                self.apply_theme()
+                self.load_portfolio()
+
+                QMessageBox.information(
+                    self,
+                    "Settings Saved",
+                    "Settings saved successfully."
+                )
+
+                self.statusBar().showMessage(
+                    "Settings updated successfully."
+                )
+
+            except Exception as e:
+
+                QMessageBox.critical(
+                    self,
+                    "Settings Error",
+                    str(e)
+                )
+
+    def apply_theme(self):
+
+        theme = str(
+            self.settings.get("theme", "light")
+        ).strip().lower()
+
+        if theme == "dark":
+
+            self.setStyleSheet("""
+                QMainWindow {
+                    background-color: #1e1e1e;
+                    color: #ffffff;
+                }
+
+                QWidget {
+                    background-color: #1e1e1e;
+                    color: #ffffff;
+                }
+
+                QLabel {
+                    color: #ffffff;
+                }
+
+                QPushButton {
+                    background-color: #2d2d30;
+                    color: #ffffff;
+                    border: 1px solid #555555;
+                    border-radius: 5px;
+                    padding: 6px;
+                }
+
+                QPushButton:hover {
+                    background-color: #3e3e42;
+                }
+
+                QPushButton:disabled {
+                    background-color: #444444;
+                    color: #888888;
+                }
+
+                QLineEdit {
+                    background-color: #2d2d30;
+                    color: #ffffff;
+                    border: 1px solid #555555;
+                    border-radius: 5px;
+                    padding: 5px;
+                }
+
+                QTableWidget {
+                    background-color: #252526;
+                    color: #ffffff;
+                    gridline-color: #555555;
+                    alternate-background-color: #2d2d30;
+                }
+
+                QHeaderView::section {
+                    background-color: #333333;
+                    color: #ffffff;
+                    padding: 5px;
+                    border: 1px solid #555555;
+                }
+
+                QFrame#SummaryCard {
+                    border: 1px solid #555555;
+                    border-radius: 8px;
+                    background-color: #2d2d30;
+                }
+
+                QStatusBar {
+                    background-color: #2d2d30;
+                    color: #ffffff;
+                }
+            """)
+
+        else:
+
+            self.setStyleSheet("""
+                QMainWindow {
+                    background-color: #ffffff;
+                    color: #000000;
+                }
+
+                QWidget {
+                    background-color: #ffffff;
+                    color: #000000;
+                }
+
+                QLabel {
+                    color: #000000;
+                }
+
+                QPushButton {
+                    background-color: #f5f5f5;
+                    color: #000000;
+                    border: 1px solid #cccccc;
+                    border-radius: 5px;
+                    padding: 6px;
+                }
+
+                QPushButton:hover {
+                    background-color: #e8e8e8;
+                }
+
+                QPushButton:disabled {
+                    background-color: #eeeeee;
+                    color: #999999;
+                }
+
+                QLineEdit {
+                    background-color: #ffffff;
+                    color: #000000;
+                    border: 1px solid #cccccc;
+                    border-radius: 5px;
+                    padding: 5px;
+                }
+
+                QTableWidget {
+                    background-color: #ffffff;
+                    color: #000000;
+                    gridline-color: #dddddd;
+                    alternate-background-color: #f8f9fa;
+                }
+
+                QHeaderView::section {
+                    background-color: #f1f1f1;
+                    color: #000000;
+                    padding: 5px;
+                    border: 1px solid #cccccc;
+                }
+
+                QFrame#SummaryCard {
+                    border: 1px solid #cccccc;
+                    border-radius: 8px;
+                    background-color: #f8f9fa;
+                }
+
+                QStatusBar {
+                    background-color: #f8f9fa;
+                    color: #000000;
+                }
+            """)
 
     def open_add_dialog(self):
 
