@@ -36,6 +36,7 @@ from price_update_dialog import PriceUpdateDialog
 from settings_dialog import SettingsDialog
 from mutual_fund_window import MutualFundWindow
 from charts_window import ChartsWindow
+from dividend_window import DividendWindow
 from services.mutual_fund_service import get_mutual_fund_summary
 
 
@@ -75,6 +76,7 @@ class MainWindow(QMainWindow):
         self.settings = load_settings()
         self.mutual_fund_window = None
         self.charts_window = None
+        self.dividend_window = None
 
         self.init_ui()
         self.apply_theme()
@@ -157,6 +159,7 @@ class MainWindow(QMainWindow):
             ("✍ Manual Price Update", self.manual_price_update),
             ("🏦 Mutual Funds", self.open_mutual_funds),
             ("📈 Charts", self.open_charts),
+            ("💰 Dividends", self.open_dividends),
             ("📄 Excel / PDF Report", self.generate_reports),
             ("💾 Backup", self.backup_database),
             ("♻ Restore", self.restore_database),
@@ -973,6 +976,25 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Charts Error",
+                str(e)
+            )
+
+
+    def open_dividends(self):
+
+        try:
+            self.dividend_window = DividendWindow(self)
+            self.dividend_window.show()
+
+            self.statusBar().showMessage(
+                "Dividend & Income Tracker opened."
+            )
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Dividend Tracker Error",
                 str(e)
             )
 
