@@ -25,9 +25,11 @@ from services.mutual_fund_service import (
     update_existing_mutual_fund,
     remove_mutual_fund,
     get_mutual_fund_summary,
+    update_mutual_fund_nav,
 )
 
 from mutual_fund_dialog import MutualFundDialog
+from mutual_fund_nav_dialog import MutualFundNavDialog
 
 
 class SortableTableWidgetItem(QTableWidgetItem):
@@ -156,6 +158,7 @@ class MutualFundWindow(QWidget):
         btn_add = QPushButton("➕ Add Mutual Fund")
         btn_edit = QPushButton("✏ Edit Mutual Fund")
         btn_delete = QPushButton("🗑 Delete Mutual Fund")
+        btn_nav_update = QPushButton("✍ Manual NAV Update")
         btn_refresh = QPushButton("🔄 Refresh")
         btn_close = QPushButton("❌ Close")
 
@@ -163,6 +166,7 @@ class MutualFundWindow(QWidget):
             btn_add,
             btn_edit,
             btn_delete,
+            btn_nav_update,
             btn_refresh,
             btn_close,
         ]
@@ -174,6 +178,7 @@ class MutualFundWindow(QWidget):
         btn_add.clicked.connect(self.open_add_dialog)
         btn_edit.clicked.connect(self.open_edit_dialog)
         btn_delete.clicked.connect(self.delete_selected_fund)
+        btn_nav_update.clicked.connect(self.manual_nav_update)
         btn_refresh.clicked.connect(self.load_funds)
         btn_close.clicked.connect(self.close)
 
@@ -379,6 +384,46 @@ class MutualFundWindow(QWidget):
                 QMessageBox.critical(
                     self,
                     "Error",
+                    str(e)
+                )
+
+    def manual_nav_update(self):
+
+        selected = self.get_selected_fund()
+
+        if not selected:
+            QMessageBox.warning(
+                self,
+                "No Selection",
+                "Please select a mutual fund to update NAV."
+            )
+            return
+
+        dialog = MutualFundNavDialog(selected, self)
+
+        if dialog.exec():
+
+            try:
+                data = dialog.get_data()
+
+                update_mutual_fund_nav(
+                    data["fund"],
+                    data["current_nav"]
+                )
+
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    f"{data['fund']} current NAV updated successfully."
+                )
+
+                self.load_funds()
+
+            except Exception as e:
+
+                QMessageBox.critical(
+                    self,
+                    "NAV Update Error",
                     str(e)
                 )
 
