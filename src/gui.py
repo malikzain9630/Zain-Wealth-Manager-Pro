@@ -35,6 +35,7 @@ from holding_dialog import HoldingDialog
 from price_update_dialog import PriceUpdateDialog
 from settings_dialog import SettingsDialog
 from mutual_fund_window import MutualFundWindow
+from charts_window import ChartsWindow
 from services.mutual_fund_service import get_mutual_fund_summary
 
 
@@ -73,6 +74,7 @@ class MainWindow(QMainWindow):
         self.all_holdings = []
         self.settings = load_settings()
         self.mutual_fund_window = None
+        self.charts_window = None
 
         self.init_ui()
         self.apply_theme()
@@ -154,6 +156,7 @@ class MainWindow(QMainWindow):
             ("📈 Update Prices CSV", self.update_prices),
             ("✍ Manual Price Update", self.manual_price_update),
             ("🏦 Mutual Funds", self.open_mutual_funds),
+            ("📈 Charts", self.open_charts),
             ("📄 Excel / PDF Report", self.generate_reports),
             ("💾 Backup", self.backup_database),
             ("♻ Restore", self.restore_database),
@@ -951,6 +954,25 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Mutual Funds Error",
+                str(e)
+            )
+
+
+    def open_charts(self):
+
+        try:
+            self.charts_window = ChartsWindow(self)
+            self.charts_window.show()
+
+            self.statusBar().showMessage(
+                "Charts & Visual Analytics opened."
+            )
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Charts Error",
                 str(e)
             )
 
