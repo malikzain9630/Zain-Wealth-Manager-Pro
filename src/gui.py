@@ -29,6 +29,28 @@ from services.portfolio_service import (
 from holding_dialog import HoldingDialog
 
 
+class SortableTableWidgetItem(QTableWidgetItem):
+
+    def __init__(self, text, sort_value=None):
+        super().__init__(text)
+
+        if sort_value is None:
+            self.sort_value = text
+        else:
+            self.sort_value = sort_value
+
+    def __lt__(self, other):
+
+        if isinstance(other, SortableTableWidgetItem):
+
+            try:
+                return float(self.sort_value) < float(other.sort_value)
+            except (ValueError, TypeError):
+                return str(self.sort_value) < str(other.sort_value)
+
+        return super().__lt__(other)
+
+
 class MainWindow(QMainWindow):
 
     def __init__(self):
@@ -227,6 +249,7 @@ class MainWindow(QMainWindow):
         table.setSelectionMode(QAbstractItemView.SingleSelection)
         table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         table.setAlternatingRowColors(True)
+        table.setSortingEnabled(True)
 
         table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         table.verticalHeader().setVisible(False)
@@ -255,6 +278,8 @@ class MainWindow(QMainWindow):
 
     def display_holdings(self, holdings):
 
+        self.table.setSortingEnabled(False)
+
         self.table.setRowCount(0)
         self.table.setRowCount(len(holdings))
 
@@ -275,14 +300,14 @@ class MainWindow(QMainWindow):
                 profit_percent = 0
 
             row_items = [
-                QTableWidgetItem(symbol),
-                QTableWidgetItem(str(shares)),
-                QTableWidgetItem(str(avg_price)),
-                QTableWidgetItem(str(current_price)),
-                QTableWidgetItem(self.format_currency(investment_value)),
-                QTableWidgetItem(self.format_currency(current_value)),
-                QTableWidgetItem(self.format_currency(profit_loss)),
-                QTableWidgetItem(f"{profit_percent:.2f}%"),
+                self.create_table_item(symbol, symbol),
+                self.create_table_item(self.format_quantity(shares), shares),
+                self.create_table_item(self.format_number(avg_price), avg_price),
+                self.create_table_item(self.format_number(current_price), current_price),
+                self.create_table_item(self.format_currency(investment_value), investment_value),
+                self.create_table_item(self.format_currency(current_value), current_value),
+                self.create_table_item(self.format_currency(profit_loss), profit_loss),
+                self.create_table_item(f"{profit_percent:.2f}%", profit_percent),
             ]
 
             for column, table_item in enumerate(row_items):
@@ -297,6 +322,15 @@ class MainWindow(QMainWindow):
                         table_item.setForeground(QBrush(QColor("red")))
 
                 self.table.setItem(row, column, table_item)
+
+        self.table.setSortingEnabled(True)
+
+    def create_table_item(self, text, value):
+
+        item = SortableTableWidgetItem(text, value)
+        item.setData(Qt.UserRole, value)
+
+        return item
 
     def apply_filter(self):
 
@@ -395,6 +429,17 @@ class MainWindow(QMainWindow):
                 font-weight:bold;
                 color:red;
             """)
+
+    def format_quantity(self, value):
+
+        if float(value).is_integer():
+            return f"{int(value):,}"
+
+        return f"{value:,.2f}"
+
+    def format_number(self, value):
+
+        return f"{value:,.2f}"
 
     def format_currency(self, value):
 
@@ -562,14 +607,18 @@ class MainWindow(QMainWindow):
             return None
 
         try:
+            shares_value = shares_item.data(Qt.UserRole)
+            avg_price_value = avg_price_item.data(Qt.UserRole)
+            current_price_value = current_price_item.data(Qt.UserRole)
+
             return {
                 "symbol": symbol_item.text().strip().upper(),
-                "shares": float(shares_item.text()),
-                "avg_price": float(avg_price_item.text()),
-                "current_price": float(current_price_item.text()),
+                "shares": float(shares_value),
+                "avg_price": float(avg_price_value),
+                "current_price": float(current_price_value),
             }
 
-        except ValueError:
+        except (ValueError, TypeError):
             QMessageBox.warning(
                 self,
                 "Invalid Data",
