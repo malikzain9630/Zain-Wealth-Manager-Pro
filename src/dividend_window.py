@@ -28,6 +28,7 @@ from services.dividend_service import (
 )
 
 from dividend_dialog import DividendDialog
+from dividend_summary_window import DividendSummaryWindow
 
 
 class SortableTableWidgetItem(QTableWidgetItem):
@@ -64,6 +65,7 @@ class DividendWindow(QWidget):
         self.settings = load_settings()
         self.summary_labels = {}
         self.dividends = []
+        self.summary_window = None
 
         self.setWindowTitle("Dividend & Income Tracker")
         self.resize(1250, 700)
@@ -160,6 +162,7 @@ class DividendWindow(QWidget):
         btn_add = QPushButton("➕ Add Dividend")
         btn_edit = QPushButton("✏ Edit Dividend")
         btn_delete = QPushButton("🗑 Delete Dividend")
+        btn_summary = QPushButton("📊 Summary")
         btn_refresh = QPushButton("🔄 Refresh")
         btn_close = QPushButton("❌ Close")
 
@@ -167,6 +170,7 @@ class DividendWindow(QWidget):
             btn_add,
             btn_edit,
             btn_delete,
+            btn_summary,
             btn_refresh,
             btn_close,
         ]
@@ -178,6 +182,7 @@ class DividendWindow(QWidget):
         btn_add.clicked.connect(self.open_add_dialog)
         btn_edit.clicked.connect(self.open_edit_dialog)
         btn_delete.clicked.connect(self.delete_selected_dividend)
+        btn_summary.clicked.connect(self.open_summary_window)
         btn_refresh.clicked.connect(self.load_dividends)
         btn_close.clicked.connect(self.close)
 
@@ -519,6 +524,21 @@ class DividendWindow(QWidget):
             QMessageBox.critical(
                 self,
                 "Error",
+                str(e)
+            )
+
+
+    def open_summary_window(self):
+
+        try:
+            self.summary_window = DividendSummaryWindow(self)
+            self.summary_window.show()
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Summary Error",
                 str(e)
             )
 
