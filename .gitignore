@@ -11,3 +11,8 @@ logs/
 *.pdf
 
 .env
+backups/
+output/
+config/settings.json
+__pycache__/
+*.pyc
