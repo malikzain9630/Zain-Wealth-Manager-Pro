@@ -29,8 +29,9 @@ from services.portfolio_service import (
 )
 from services.backup_service import create_backup, restore_backup
 from services.import_service import import_portfolio_csv
-from services.price_service import import_price_csv
+from services.price_service import import_price_csv, update_single_price
 from holding_dialog import HoldingDialog
+from price_update_dialog import PriceUpdateDialog
 
 
 class SortableTableWidgetItem(QTableWidgetItem):
@@ -62,7 +63,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Zain Wealth Manager Pro")
-        self.resize(1400, 750)
+        self.resize(1450, 780)
 
         self.summary_labels = {}
         self.all_holdings = []
@@ -131,7 +132,8 @@ class MainWindow(QMainWindow):
             ("🗑 Delete Holding", self.delete_selected_holding),
             ("🔄 Refresh", self.load_portfolio),
             ("📂 Import Portfolio", self.import_portfolio),
-            ("📈 Update Prices", self.update_prices),
+            ("📈 Update Prices CSV", self.update_prices),
+            ("✍ Manual Price Update", self.manual_price_update),
             ("📄 Excel / PDF Report", self.generate_reports),
             ("💾 Backup", self.backup_database),
             ("♻ Restore", self.restore_database),
@@ -142,7 +144,7 @@ class MainWindow(QMainWindow):
         for text, action in buttons:
 
             btn = QPushButton(text)
-            btn.setMinimumHeight(45)
+            btn.setMinimumHeight(42)
 
             if action:
                 btn.clicked.connect(action)
@@ -686,6 +688,46 @@ class MainWindow(QMainWindow):
                 "Price Update Error",
                 str(e)
             )
+
+    def manual_price_update(self):
+
+        selected = self.get_selected_holding()
+
+        if not selected:
+            QMessageBox.warning(
+                self,
+                "No Selection",
+                "Please select a holding to update price."
+            )
+            return
+
+        dialog = PriceUpdateDialog(selected, self)
+
+        if dialog.exec():
+
+            try:
+                data = dialog.get_data()
+
+                update_single_price(
+                    data["symbol"],
+                    data["current_price"]
+                )
+
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    f"{data['symbol']} current price updated successfully."
+                )
+
+                self.load_portfolio()
+
+            except Exception as e:
+
+                QMessageBox.critical(
+                    self,
+                    "Price Update Error",
+                    str(e)
+                )
 
     def backup_database(self):
 
