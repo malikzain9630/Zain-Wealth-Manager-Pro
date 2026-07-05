@@ -44,9 +44,13 @@ from services.dividend_yield_service import (
 )
 
 
-def create_reports():
+def create_reports(
+    generate_excel=True,
+    generate_pdf=True,
+    output_folder=None
+):
     """
-    Create Excel and PDF reports.
+    Create Excel and/or PDF reports.
 
     Existing report sheets are preserved.
     New database-based sheets are added:
@@ -57,10 +61,24 @@ def create_reports():
         5. Dividend Summary
         6. Dividend Charts
         7. Dividend Forecast
+
+    Returns:
+        {
+            "excel_file": Path or None,
+            "pdf_file": Path or None,
+            "legacy_pdf_file": Path or None,
+        }
     """
 
-    output = Path(__file__).resolve().parent.parent.parent / "output"
-    output.mkdir(exist_ok=True)
+    if not generate_excel and not generate_pdf:
+        raise ValueError("Please select at least one report type: Excel or PDF.")
+
+    if output_folder:
+        output = Path(output_folder)
+    else:
+        output = Path(__file__).resolve().parent.parent.parent / "output"
+
+    output.mkdir(parents=True, exist_ok=True)
 
     excel_file = output / "Zain_Wealth_Manager_Pro_v1.xlsx"
     legacy_pdf_file = output / "report.pdf"
@@ -72,86 +90,101 @@ def create_reports():
     mutual_funds = get_all_mutual_funds()
     dividends = get_all_dividends()
 
-    workbook = xlsxwriter.Workbook(str(excel_file))
+    result = {
+        "excel_file": None,
+        "pdf_file": None,
+        "legacy_pdf_file": None,
+    }
 
-    # Existing report sheets
-    create_dashboard(workbook)
-    create_psx_sheet(workbook)
-    create_mutual_funds_sheet(workbook)
-    create_pf_sheet(workbook)
-    create_pension_sheet(workbook)
-    create_dividend_sheet(workbook)
-    create_transaction_sheet(workbook)
-    create_allocation_sheet(workbook)
-    create_networth_history_sheet(workbook)
+    if generate_excel:
 
-    # New database-based report sheets
-    formats = create_formats(workbook)
+        workbook = xlsxwriter.Workbook(str(excel_file))
 
-    create_psx_portfolio_sheet(
-        workbook,
-        psx_holdings,
-        formats
-    )
+        # Existing report sheets
+        create_dashboard(workbook)
+        create_psx_sheet(workbook)
+        create_mutual_funds_sheet(workbook)
+        create_pf_sheet(workbook)
+        create_pension_sheet(workbook)
+        create_dividend_sheet(workbook)
+        create_transaction_sheet(workbook)
+        create_allocation_sheet(workbook)
+        create_networth_history_sheet(workbook)
 
-    create_mutual_funds_portfolio_sheet(
-        workbook,
-        mutual_funds,
-        formats
-    )
+        # New database-based report sheets
+        formats = create_formats(workbook)
 
-    create_overall_wealth_sheet(
-        workbook,
-        psx_holdings,
-        mutual_funds,
-        formats
-    )
+        create_psx_portfolio_sheet(
+            workbook,
+            psx_holdings,
+            formats
+        )
 
-    create_charts_sheet(
-        workbook,
-        psx_holdings,
-        mutual_funds,
-        formats
-    )
+        create_mutual_funds_portfolio_sheet(
+            workbook,
+            mutual_funds,
+            formats
+        )
 
-    create_dividend_income_sheet(
-        workbook,
-        dividends,
-        formats
-    )
+        create_overall_wealth_sheet(
+            workbook,
+            psx_holdings,
+            mutual_funds,
+            formats
+        )
 
-    create_dividend_summary_sheet(
-        workbook,
-        formats
-    )
+        create_charts_sheet(
+            workbook,
+            psx_holdings,
+            mutual_funds,
+            formats
+        )
 
-    create_dividend_charts_sheet(
-        workbook,
-        formats
-    )
+        create_dividend_income_sheet(
+            workbook,
+            dividends,
+            formats
+        )
 
-    create_dividend_forecast_sheet(
-        workbook,
-        formats
-    )
+        create_dividend_summary_sheet(
+            workbook,
+            formats
+        )
 
-    workbook.close()
+        create_dividend_charts_sheet(
+            workbook,
+            formats
+        )
 
-    # Keep existing PDF report generation safe.
-    try:
-        generate_pdf_report(str(legacy_pdf_file))
-    except Exception:
-        pass
+        create_dividend_forecast_sheet(
+            workbook,
+            formats
+        )
 
-    # Create new combined PDF report with PSX + Mutual Funds + Overall Summary.
-    create_combined_pdf_report(
-        combined_pdf_file,
-        psx_holdings,
-        mutual_funds,
-        dividends
-    )
+        workbook.close()
 
-    return excel_file, combined_pdf_file
+        result["excel_file"] = excel_file
+
+    if generate_pdf:
+
+        # Keep existing PDF report generation safe.
+        try:
+            generate_pdf_report(str(legacy_pdf_file))
+            result["legacy_pdf_file"] = legacy_pdf_file
+        except Exception:
+            result["legacy_pdf_file"] = None
+
+        # Create new combined PDF report with PSX + Mutual Funds + Dividends.
+        create_combined_pdf_report(
+            combined_pdf_file,
+            psx_holdings,
+            mutual_funds,
+            dividends
+        )
+
+        result["pdf_file"] = combined_pdf_file
+
+    return result
 
 
 def create_formats(workbook):

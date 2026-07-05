@@ -34,6 +34,7 @@ from services.settings_service import load_settings, update_settings
 from holding_dialog import HoldingDialog
 from price_update_dialog import PriceUpdateDialog
 from settings_dialog import SettingsDialog
+from report_export_dialog import ReportExportDialog
 from mutual_fund_window import MutualFundWindow
 from charts_window import ChartsWindow
 from dividend_window import DividendWindow
@@ -846,13 +847,39 @@ class MainWindow(QMainWindow):
 
     def generate_reports(self):
 
+        dialog = ReportExportDialog(self)
+
+        if not dialog.exec():
+            return
+
         try:
-            create_reports()
+            data = dialog.get_data()
+
+            result = create_reports(
+                generate_excel=data["generate_excel"],
+                generate_pdf=data["generate_pdf"],
+                output_folder=data["output_folder"]
+            )
+
+            message_lines = [
+                "Reports generated successfully!",
+                "",
+            ]
+
+            if result.get("excel_file"):
+                message_lines.append(
+                    f"Excel Report:\n{result['excel_file']}"
+                )
+
+            if result.get("pdf_file"):
+                message_lines.append(
+                    f"PDF Report:\n{result['pdf_file']}"
+                )
 
             QMessageBox.information(
                 self,
-                "Success",
-                "Excel and PDF Reports Generated Successfully!"
+                "Report Generated",
+                "\n\n".join(message_lines)
             )
 
             self.statusBar().showMessage(
@@ -863,7 +890,7 @@ class MainWindow(QMainWindow):
 
             QMessageBox.critical(
                 self,
-                "Error",
+                "Report Error",
                 str(e)
             )
 
