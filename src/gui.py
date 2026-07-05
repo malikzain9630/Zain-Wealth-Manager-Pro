@@ -43,6 +43,7 @@ from dividend_yield_window import DividendYieldWindow
 from wealth_asset_window import WealthAssetWindow
 from services.mutual_fund_service import get_mutual_fund_summary
 from services.dividend_yield_service import get_dividend_dashboard_summary
+from services.wealth_asset_service import get_phase10_dashboard_summary
 from services.currency_service import (
     format_currency as format_display_currency,
     get_conversion_note,
@@ -126,6 +127,16 @@ class MainWindow(QMainWindow):
 
         combined_summary_layout = self.create_combined_summary_cards()
 
+        wealth_summary_heading = QLabel("🏦 PF, Pension & Bank Cash Summary")
+        wealth_summary_heading.setAlignment(Qt.AlignCenter)
+        wealth_summary_heading.setStyleSheet("""
+            font-size:16px;
+            font-weight:bold;
+            padding:6px;
+        """)
+
+        wealth_summary_layout = self.create_wealth_asset_summary_cards()
+
         dividend_summary_heading = QLabel("💸 Dividend & Passive Income Summary")
         dividend_summary_heading.setAlignment(Qt.AlignCenter)
         dividend_summary_heading.setStyleSheet("""
@@ -156,6 +167,8 @@ class MainWindow(QMainWindow):
         content_layout.addLayout(summary_layout)
         content_layout.addWidget(combined_summary_heading)
         content_layout.addLayout(combined_summary_layout)
+        content_layout.addWidget(wealth_summary_heading)
+        content_layout.addLayout(wealth_summary_layout)
         content_layout.addWidget(dividend_summary_heading)
         content_layout.addLayout(dividend_summary_layout)
         content_layout.addWidget(self.currency_conversion_note)
@@ -259,6 +272,27 @@ class MainWindow(QMainWindow):
 
         return layout
 
+
+
+    def create_wealth_asset_summary_cards(self):
+
+        layout = QHBoxLayout()
+
+        cards = [
+            ("Provident Fund", "wealth_provident_fund"),
+            ("Pension / MTPF", "wealth_pension_mtpf"),
+            ("Bank Cash", "wealth_bank_cash"),
+            ("Other Assets", "wealth_other_assets"),
+            ("Total Manual Wealth", "wealth_total_balance"),
+            ("Total Monthly Saving", "wealth_total_monthly_saving"),
+        ]
+
+        for title, key in cards:
+
+            card = self.create_card(title, key)
+            layout.addWidget(card)
+
+        return layout
 
     def create_dividend_summary_cards(self):
 
@@ -387,6 +421,7 @@ class MainWindow(QMainWindow):
             self.display_holdings(self.all_holdings)
             self.update_summary_cards(self.all_holdings)
             self.update_combined_summary_cards(self.all_holdings)
+            self.update_wealth_asset_dashboard_cards()
             self.update_dividend_dashboard_cards()
             self.update_currency_conversion_note()
             self.update_concentration_alert(self.all_holdings)
@@ -629,6 +664,69 @@ class MainWindow(QMainWindow):
         )
 
 
+
+
+    def update_wealth_asset_dashboard_cards(self):
+
+        try:
+            wealth_summary = get_phase10_dashboard_summary()
+
+            self.summary_labels["wealth_provident_fund"].setText(
+                self.format_currency(wealth_summary["provident_fund"])
+            )
+
+            self.summary_labels["wealth_pension_mtpf"].setText(
+                self.format_currency(wealth_summary["pension_mtpf"])
+            )
+
+            self.summary_labels["wealth_bank_cash"].setText(
+                self.format_currency(wealth_summary["bank_cash"])
+            )
+
+            self.summary_labels["wealth_other_assets"].setText(
+                self.format_currency(wealth_summary["other_assets"])
+            )
+
+            self.summary_labels["wealth_total_balance"].setText(
+                self.format_currency(wealth_summary["total_balance"])
+            )
+
+            self.summary_labels["wealth_total_monthly_saving"].setText(
+                self.format_currency(wealth_summary["total_monthly_saving"])
+            )
+
+            wealth_keys = [
+                "wealth_provident_fund",
+                "wealth_pension_mtpf",
+                "wealth_bank_cash",
+                "wealth_other_assets",
+                "wealth_total_balance",
+                "wealth_total_monthly_saving",
+            ]
+
+            for key in wealth_keys:
+
+                self.summary_labels[key].setStyleSheet("""
+                    font-size:17px;
+                    font-weight:bold;
+                    color:green;
+                """)
+
+        except Exception:
+
+            default_values = {
+                "wealth_provident_fund": self.format_currency(0),
+                "wealth_pension_mtpf": self.format_currency(0),
+                "wealth_bank_cash": self.format_currency(0),
+                "wealth_other_assets": self.format_currency(0),
+                "wealth_total_balance": self.format_currency(0),
+                "wealth_total_monthly_saving": self.format_currency(0),
+            }
+
+            for key, value in default_values.items():
+
+                if key in self.summary_labels:
+                    self.summary_labels[key].setText(value)
 
     def update_currency_conversion_note(self):
 
@@ -1220,6 +1318,7 @@ class MainWindow(QMainWindow):
 
         try:
             self.wealth_asset_window = WealthAssetWindow(self)
+            self.wealth_asset_window.destroyed.connect(self.load_portfolio)
             self.wealth_asset_window.show()
 
             self.statusBar().showMessage(
