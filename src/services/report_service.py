@@ -35,6 +35,13 @@ from services.dividend_chart_service import (
     get_yearly_dividend_data,
     get_tax_vs_net_data,
 )
+from services.dividend_yield_service import (
+    get_dividend_yield_by_stock,
+    get_passive_income_forecast,
+    get_monthly_income_trend,
+    get_yearly_income_trend,
+    get_top_dividend_stocks,
+)
 
 
 def create_reports():
@@ -49,6 +56,7 @@ def create_reports():
         4. Dividend Income
         5. Dividend Summary
         6. Dividend Charts
+        7. Dividend Forecast
     """
 
     output = Path(__file__).resolve().parent.parent.parent / "output"
@@ -118,6 +126,11 @@ def create_reports():
     )
 
     create_dividend_charts_sheet(
+        workbook,
+        formats
+    )
+
+    create_dividend_forecast_sheet(
         workbook,
         formats
     )
@@ -1052,6 +1065,244 @@ def write_dividend_summary_table(
         row_number += 1
 
 
+
+def create_dividend_forecast_sheet(workbook, formats):
+    """
+    Create dividend yield and passive income forecast sheet.
+    """
+
+    sheet = safe_add_worksheet(workbook, "Dividend Forecast")
+
+    sheet.merge_range("A1:K1", "Dividend Yield & Passive Income Forecast", formats["title"])
+    sheet.write("A2", "Generated On", formats["section"])
+    sheet.write("B2", datetime.now().strftime("%d-%m-%Y %I:%M %p"), formats["text"])
+
+    forecast = get_passive_income_forecast()
+    yield_rows = get_dividend_yield_by_stock()
+    monthly_rows = get_monthly_income_trend()
+    yearly_rows = get_yearly_income_trend()
+    top_rows = get_top_dividend_stocks(10)
+
+    sheet.write("A4", "Passive Income Forecast Summary", formats["section"])
+
+    summary_headers = [
+        "Current Year",
+        "Current Month",
+        "Total Net Received",
+        "Current Year Net",
+        "Monthly Forecast",
+        "Yearly Forecast",
+        "Total Records",
+    ]
+
+    for col, header in enumerate(summary_headers):
+        sheet.write(5, col, header, formats["header"])
+
+    sheet.write_number(6, 0, int(forecast["current_year"]), formats["text"])
+    sheet.write_number(6, 1, int(forecast["current_month"]), formats["text"])
+    sheet.write_number(6, 2, safe_float(forecast["total_net_received"]), formats["currency"])
+    sheet.write_number(6, 3, safe_float(forecast["current_year_net"]), formats["currency"])
+    sheet.write_number(6, 4, safe_float(forecast["monthly_forecast"]), formats["currency"])
+    sheet.write_number(6, 5, safe_float(forecast["yearly_forecast"]), formats["currency"])
+    sheet.write_number(6, 6, int(forecast["total_records"]), formats["text"])
+
+    sheet.write("A9", "Stock-wise Dividend Yield", formats["section"])
+
+    yield_headers = [
+        "Symbol",
+        "Shares",
+        "Investment Value",
+        "Current Value",
+        "Gross Dividend",
+        "Tax Amount",
+        "Net Dividend",
+        "Records",
+        "Yield on Cost %",
+        "Current Yield %",
+    ]
+
+    for col, header in enumerate(yield_headers):
+        sheet.write(10, col, header, formats["header"])
+
+    row = 11
+
+    if not yield_rows:
+        sheet.write(row, 0, "No Data", formats["text"])
+        row += 1
+    else:
+        for item in yield_rows:
+            sheet.write(row, 0, str(item["symbol"]).upper(), formats["text"])
+            sheet.write_number(row, 1, safe_float(item["shares"]), formats["number"])
+            sheet.write_number(row, 2, safe_float(item["investment_value"]), formats["currency"])
+            sheet.write_number(row, 3, safe_float(item["current_value"]), formats["currency"])
+            sheet.write_number(row, 4, safe_float(item["gross_dividend"]), formats["currency"])
+            sheet.write_number(row, 5, safe_float(item["tax_amount"]), formats["currency"])
+            sheet.write_number(row, 6, safe_float(item["net_dividend"]), formats["currency"])
+            sheet.write_number(row, 7, int(item["dividend_records"]), formats["text"])
+            sheet.write_number(row, 8, safe_float(item["yield_on_cost"]) / 100, formats["percent"])
+            sheet.write_number(row, 9, safe_float(item["current_yield"]) / 100, formats["percent"])
+            row += 1
+
+    next_section_row = row + 2
+
+    sheet.write(next_section_row, 0, "Top Dividend Stocks", formats["section"])
+
+    top_headers = [
+        "Rank",
+        "Symbol",
+        "Net Dividend",
+        "Yield on Cost %",
+        "Current Yield %",
+        "Records",
+    ]
+
+    for col, header in enumerate(top_headers):
+        sheet.write(next_section_row + 1, col, header, formats["header"])
+
+    top_start_row = next_section_row + 2
+
+    if not top_rows:
+        sheet.write(top_start_row, 0, "No Data", formats["text"])
+        top_rows_for_chart = [["No Data", 0]]
+    else:
+        top_rows_for_chart = []
+
+        for index, item in enumerate(top_rows):
+            write_row = top_start_row + index
+            rank = index + 1
+
+            sheet.write_number(write_row, 0, rank, formats["text"])
+            sheet.write(write_row, 1, str(item["symbol"]).upper(), formats["text"])
+            sheet.write_number(write_row, 2, safe_float(item["net_dividend"]), formats["currency"])
+            sheet.write_number(write_row, 3, safe_float(item["yield_on_cost"]) / 100, formats["percent"])
+            sheet.write_number(write_row, 4, safe_float(item["current_yield"]) / 100, formats["percent"])
+            sheet.write_number(write_row, 5, int(item["dividend_records"]), formats["text"])
+
+            top_rows_for_chart.append([
+                str(item["symbol"]).upper(),
+                safe_float(item["net_dividend"])
+            ])
+
+    trend_start_row = top_start_row + max(len(top_rows), 1) + 3
+
+    sheet.write(trend_start_row, 0, "Monthly Income Trend", formats["section"])
+
+    monthly_headers = [
+        "Month",
+        "Records",
+        "Gross Amount",
+        "Tax Amount",
+        "Net Amount",
+    ]
+
+    for col, header in enumerate(monthly_headers):
+        sheet.write(trend_start_row + 1, col, header, formats["header"])
+
+    monthly_data_start = trend_start_row + 2
+
+    if not monthly_rows:
+        sheet.write(monthly_data_start, 0, "No Data", formats["text"])
+        sheet.write_number(monthly_data_start, 4, 0, formats["currency"])
+        monthly_rows_for_chart = [["No Data", 0]]
+    else:
+        monthly_rows_for_chart = []
+
+        for index, item in enumerate(monthly_rows):
+            write_row = monthly_data_start + index
+
+            sheet.write(write_row, 0, str(item["month"]), formats["text"])
+            sheet.write_number(write_row, 1, int(item["records"]), formats["text"])
+            sheet.write_number(write_row, 2, safe_float(item["gross_amount"]), formats["currency"])
+            sheet.write_number(write_row, 3, safe_float(item["tax_amount"]), formats["currency"])
+            sheet.write_number(write_row, 4, safe_float(item["net_amount"]), formats["currency"])
+
+            monthly_rows_for_chart.append([
+                str(item["month"]),
+                safe_float(item["net_amount"])
+            ])
+
+    yearly_start_col = 6
+
+    sheet.write(trend_start_row, yearly_start_col, "Yearly Income Trend", formats["section"])
+
+    yearly_headers = [
+        "Year",
+        "Records",
+        "Gross Amount",
+        "Tax Amount",
+        "Net Amount",
+    ]
+
+    for col, header in enumerate(yearly_headers):
+        sheet.write(trend_start_row + 1, yearly_start_col + col, header, formats["header"])
+
+    yearly_data_start = trend_start_row + 2
+
+    if not yearly_rows:
+        sheet.write(yearly_data_start, yearly_start_col, "No Data", formats["text"])
+        sheet.write_number(yearly_data_start, yearly_start_col + 4, 0, formats["currency"])
+    else:
+        for index, item in enumerate(yearly_rows):
+            write_row = yearly_data_start + index
+
+            sheet.write(write_row, yearly_start_col, str(item["year"]), formats["text"])
+            sheet.write_number(write_row, yearly_start_col + 1, int(item["records"]), formats["text"])
+            sheet.write_number(write_row, yearly_start_col + 2, safe_float(item["gross_amount"]), formats["currency"])
+            sheet.write_number(write_row, yearly_start_col + 3, safe_float(item["tax_amount"]), formats["currency"])
+            sheet.write_number(write_row, yearly_start_col + 4, safe_float(item["net_amount"]), formats["currency"])
+
+    chart_start_row = trend_start_row + max(len(monthly_rows), len(yearly_rows), 1) + 4
+
+    # Chart source tables
+    write_chart_source_table(
+        sheet,
+        f"A{chart_start_row + 1}",
+        "Top Dividend Stocks Chart Data",
+        ["Symbol", "Net Dividend"],
+        top_rows_for_chart,
+        formats
+    )
+
+    write_chart_source_table(
+        sheet,
+        f"D{chart_start_row + 1}",
+        "Monthly Forecast Chart Data",
+        ["Month", "Net Amount"],
+        monthly_rows_for_chart,
+        formats
+    )
+
+    top_chart_rows_count = len(top_rows_for_chart)
+    monthly_chart_rows_count = len(monthly_rows_for_chart)
+
+    create_excel_bar_chart(
+        workbook,
+        sheet,
+        "Top Dividend Stocks",
+        f"A{chart_start_row + 3}:A{chart_start_row + 2 + top_chart_rows_count}",
+        f"B{chart_start_row + 3}:B{chart_start_row + 2 + top_chart_rows_count}",
+        f"G{chart_start_row + 1}",
+        "Net Dividend"
+    )
+
+    create_excel_bar_chart(
+        workbook,
+        sheet,
+        "Monthly Dividend Income Trend",
+        f"D{chart_start_row + 3}:D{chart_start_row + 2 + monthly_chart_rows_count}",
+        f"E{chart_start_row + 3}:E{chart_start_row + 2 + monthly_chart_rows_count}",
+        f"G{chart_start_row + 18}",
+        "Net Dividend"
+    )
+
+    sheet.set_column("A:A", 18)
+    sheet.set_column("B:B", 14)
+    sheet.set_column("C:G", 18)
+    sheet.set_column("H:J", 18)
+    sheet.set_column("K:K", 18)
+    sheet.freeze_panes(10, 0)
+
+
 def create_dividend_charts_sheet(workbook, formats):
     """
     Create dividend charts sheet:
@@ -1444,6 +1695,18 @@ def create_combined_pdf_report(pdf_file, holdings, mutual_funds, dividends):
     story.append(create_pdf_table(get_dividend_summary_pdf_rows()))
     story.append(Spacer(1, 16))
 
+    story.append(Paragraph("Passive Income Forecast", styles["Heading2"]))
+    story.append(create_pdf_table(get_passive_income_forecast_pdf_rows()))
+    story.append(Spacer(1, 16))
+
+    story.append(Paragraph("Dividend Yield by Stock", styles["Heading2"]))
+    story.append(create_pdf_table(get_dividend_yield_pdf_rows()))
+    story.append(Spacer(1, 16))
+
+    story.append(Paragraph("Top Dividend Stocks", styles["Heading2"]))
+    story.append(create_pdf_table(get_top_dividend_stocks_pdf_rows()))
+    story.append(Spacer(1, 16))
+
     story.append(Paragraph("Dividend Records", styles["Heading2"]))
     story.append(create_pdf_table(get_dividend_records_pdf_rows(dividends)))
     story.append(Spacer(1, 16))
@@ -1716,6 +1979,114 @@ def create_pdf_dividend_chart_drawings():
     return drawings
 
 
+
+def get_passive_income_forecast_pdf_rows():
+    """
+    Return PDF rows for passive income forecast.
+    """
+
+    forecast = get_passive_income_forecast()
+
+    return [
+        [
+            "Current Year",
+            "Current Year Net",
+            "Monthly Forecast",
+            "Yearly Forecast",
+            "Total Net Received",
+            "Records",
+        ],
+        [
+            str(forecast["current_year"]),
+            format_money(forecast["current_year_net"]),
+            format_money(forecast["monthly_forecast"]),
+            format_money(forecast["yearly_forecast"]),
+            format_money(forecast["total_net_received"]),
+            str(forecast["total_records"]),
+        ],
+    ]
+
+
+def get_dividend_yield_pdf_rows():
+    """
+    Return PDF rows for stock-wise dividend yield.
+    """
+
+    rows = [[
+        "Symbol",
+        "Investment",
+        "Current Value",
+        "Net Dividend",
+        "Yield on Cost",
+        "Current Yield",
+    ]]
+
+    yield_rows = get_dividend_yield_by_stock()
+
+    if not yield_rows:
+        rows.append([
+            "No Data",
+            format_money(0),
+            format_money(0),
+            format_money(0),
+            "0.00%",
+            "0.00%",
+        ])
+        return rows
+
+    for item in yield_rows[:12]:
+        rows.append([
+            str(item["symbol"]).upper(),
+            format_money(item["investment_value"]),
+            format_money(item["current_value"]),
+            format_money(item["net_dividend"]),
+            format_plain_percent(item["yield_on_cost"]),
+            format_plain_percent(item["current_yield"]),
+        ])
+
+    return rows
+
+
+def get_top_dividend_stocks_pdf_rows():
+    """
+    Return PDF rows for top dividend stocks.
+    """
+
+    rows = [[
+        "Rank",
+        "Symbol",
+        "Net Dividend",
+        "Yield on Cost",
+        "Current Yield",
+        "Records",
+    ]]
+
+    top_rows = get_top_dividend_stocks(10)
+
+    if not top_rows:
+        rows.append([
+            "1",
+            "No Data",
+            format_money(0),
+            "0.00%",
+            "0.00%",
+            "0",
+        ])
+        return rows
+
+    for index, item in enumerate(top_rows):
+        rows.append([
+            str(index + 1),
+            str(item["symbol"]).upper(),
+            format_money(item["net_dividend"]),
+            format_plain_percent(item["yield_on_cost"]),
+            format_plain_percent(item["current_yield"]),
+            str(item["dividend_records"]),
+        ])
+
+    return rows
+
+
 def get_dividend_summary_pdf_rows():
     """
     Return PDF rows for dividend income summary.
@@ -1889,6 +2260,16 @@ def format_percent(value):
     """
 
     return f"{safe_float(value) * 100:.2f}%"
+
+
+
+def format_plain_percent(value):
+    """
+    Format already-calculated percentage value for PDF.
+    Example: 4.25 -> 4.25%
+    """
+
+    return f"{safe_float(value):,.2f}%"
 
 
 def format_quantity(value):
