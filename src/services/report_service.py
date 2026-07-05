@@ -42,6 +42,12 @@ from services.dividend_yield_service import (
     get_yearly_income_trend,
     get_top_dividend_stocks,
 )
+from services.currency_service import (
+    convert_from_pkr,
+    format_currency as format_display_currency,
+    get_conversion_note,
+    get_display_currency,
+)
 
 
 def create_reports(
@@ -113,6 +119,11 @@ def create_reports(
 
         # New database-based report sheets
         formats = create_formats(workbook)
+
+        create_currency_info_sheet(
+            workbook,
+            formats
+        )
 
         create_psx_portfolio_sheet(
             workbook,
@@ -302,6 +313,35 @@ def safe_add_worksheet(workbook, preferred_name):
     return workbook.add_worksheet(candidate)
 
 
+
+def create_currency_info_sheet(workbook, formats):
+    """
+    Create currency information sheet for reports.
+    """
+
+    sheet = safe_add_worksheet(workbook, "Currency Info")
+
+    sheet.merge_range("A1:D1", "Currency Conversion Information", formats["title"])
+
+    rows = [
+        ("Base Currency", "PKR"),
+        ("Display Currency", get_display_currency()),
+        ("Conversion Rule", get_conversion_note()),
+        ("Note", "Database values remain saved in PKR. Report values are converted for display."),
+        ("Generated On", datetime.now().strftime("%d-%m-%Y %I:%M %p")),
+    ]
+
+    sheet.write("A3", "Field", formats["header"])
+    sheet.write("B3", "Value", formats["header"])
+
+    for row_index, row_data in enumerate(rows, start=3):
+        sheet.write(row_index, 0, row_data[0], formats["text"])
+        sheet.write(row_index, 1, row_data[1], formats["text"])
+
+    sheet.set_column("A:A", 24)
+    sheet.set_column("B:D", 60)
+
+
 def create_psx_portfolio_sheet(workbook, holdings, formats):
     """
     Create database-based PSX portfolio sheet.
@@ -362,11 +402,11 @@ def create_psx_portfolio_sheet(workbook, holdings, formats):
 
         sheet.write(row, 0, symbol, formats["text"])
         sheet.write_number(row, 1, shares, formats["number"])
-        sheet.write_number(row, 2, avg_price, formats["currency"])
-        sheet.write_number(row, 3, current_price, formats["currency"])
-        sheet.write_number(row, 4, investment_value, formats["currency"])
-        sheet.write_number(row, 5, current_value, formats["currency"])
-        sheet.write_number(row, 6, profit_loss, profit_format)
+        sheet.write_number(row, 2, display_amount(avg_price), formats["currency"])
+        sheet.write_number(row, 3, display_amount(current_price), formats["currency"])
+        sheet.write_number(row, 4, display_amount(investment_value), formats["currency"])
+        sheet.write_number(row, 5, display_amount(current_value), formats["currency"])
+        sheet.write_number(row, 6, display_amount(profit_loss), profit_format)
         sheet.write_number(row, 7, profit_percent, percent_format)
         sheet.write_number(row, 8, allocation_percent, formats["percent"])
 
@@ -390,9 +430,9 @@ def create_psx_portfolio_sheet(workbook, holdings, formats):
     )
 
     sheet.write(total_row, 3, "Total", formats["total_label"])
-    sheet.write_number(total_row, 4, total_investment, formats["total_value"])
-    sheet.write_number(total_row, 5, total_current_value, formats["total_value"])
-    sheet.write_number(total_row, 6, total_profit, total_profit_format)
+    sheet.write_number(total_row, 4, display_amount(total_investment), formats["total_value"])
+    sheet.write_number(total_row, 5, display_amount(total_current_value), formats["total_value"])
+    sheet.write_number(total_row, 6, display_amount(total_profit), total_profit_format)
     sheet.write_number(total_row, 7, total_profit_percent, total_percent_format)
 
     sheet.set_column("A:A", 18)
@@ -453,11 +493,11 @@ def create_mutual_funds_portfolio_sheet(workbook, mutual_funds, formats):
 
         sheet.write(row, 0, fund, formats["text"])
         sheet.write_number(row, 1, units, formats["number"])
-        sheet.write_number(row, 2, avg_nav, formats["currency"])
-        sheet.write_number(row, 3, current_nav, formats["currency"])
-        sheet.write_number(row, 4, investment_value, formats["currency"])
-        sheet.write_number(row, 5, current_value, formats["currency"])
-        sheet.write_number(row, 6, profit_loss, profit_format)
+        sheet.write_number(row, 2, display_amount(avg_nav), formats["currency"])
+        sheet.write_number(row, 3, display_amount(current_nav), formats["currency"])
+        sheet.write_number(row, 4, display_amount(investment_value), formats["currency"])
+        sheet.write_number(row, 5, display_amount(current_value), formats["currency"])
+        sheet.write_number(row, 6, display_amount(profit_loss), profit_format)
         sheet.write_number(row, 7, profit_percent, percent_format)
 
         row += 1
@@ -481,9 +521,9 @@ def create_mutual_funds_portfolio_sheet(workbook, mutual_funds, formats):
     )
 
     sheet.write(total_row, 3, "Total", formats["total_label"])
-    sheet.write_number(total_row, 4, total_investment, formats["total_value"])
-    sheet.write_number(total_row, 5, total_current, formats["total_value"])
-    sheet.write_number(total_row, 6, total_profit, total_profit_format)
+    sheet.write_number(total_row, 4, display_amount(total_investment), formats["total_value"])
+    sheet.write_number(total_row, 5, display_amount(total_current), formats["total_value"])
+    sheet.write_number(total_row, 6, display_amount(total_profit), total_profit_format)
     sheet.write_number(total_row, 7, total_profit_percent, total_percent_format)
 
     sheet.set_column("A:A", 28)
@@ -577,9 +617,9 @@ def create_overall_wealth_sheet(workbook, holdings, mutual_funds, formats):
         )
 
         sheet.write(row_number, 0, category, formats["text"])
-        sheet.write_number(row_number, 1, investment, formats["currency"])
-        sheet.write_number(row_number, 2, current, formats["currency"])
-        sheet.write_number(row_number, 3, profit, profit_format)
+        sheet.write_number(row_number, 1, display_amount(investment), formats["currency"])
+        sheet.write_number(row_number, 2, display_amount(current), formats["currency"])
+        sheet.write_number(row_number, 3, display_amount(profit), profit_format)
         sheet.write_number(row_number, 4, profit_percent, percent_format)
         sheet.write_number(row_number, 5, records, formats["text"])
 
@@ -705,12 +745,12 @@ def write_chart_source_table(sheet, start_cell, title, headers, rows, formats):
 
     if not rows:
         sheet.write(start_row + 2, start_col, "No Data", formats["text"])
-        sheet.write_number(start_row + 2, start_col + 1, 0, formats["currency"])
+        sheet.write_number(start_row + 2, start_col + 1, display_amount(0), formats["currency"])
         return
 
     for row_index, row_data in enumerate(rows, start=start_row + 2):
         sheet.write(row_index, start_col, row_data[0], formats["text"])
-        sheet.write_number(row_index, start_col + 1, row_data[1], formats["currency"])
+        sheet.write_number(row_index, start_col + 1, display_amount(row_data[1]), formats["currency"])
 
 
 def cell_to_row_col(cell):
@@ -946,10 +986,10 @@ def create_dividend_income_sheet(workbook, dividends, formats):
         sheet.write(row, 0, record_id, formats["text"])
         sheet.write(row, 1, symbol, formats["text"])
         sheet.write_number(row, 2, shares, formats["number"])
-        sheet.write_number(row, 3, dividend_per_share, formats["currency"])
-        sheet.write_number(row, 4, gross_amount, formats["currency"])
-        sheet.write_number(row, 5, tax_amount, formats["currency"])
-        sheet.write_number(row, 6, net_amount, formats["currency"])
+        sheet.write_number(row, 3, display_amount(dividend_per_share), formats["currency"])
+        sheet.write_number(row, 4, display_amount(gross_amount), formats["currency"])
+        sheet.write_number(row, 5, display_amount(tax_amount), formats["currency"])
+        sheet.write_number(row, 6, display_amount(net_amount), formats["currency"])
         sheet.write(row, 7, payment_date, formats["text"])
         sheet.write(row, 8, remarks, formats["text"])
 
@@ -958,9 +998,9 @@ def create_dividend_income_sheet(workbook, dividends, formats):
     total_row = row + 1
 
     sheet.write(total_row, 3, "Total", formats["total_label"])
-    sheet.write_number(total_row, 4, total_gross, formats["total_value"])
-    sheet.write_number(total_row, 5, total_tax, formats["total_value"])
-    sheet.write_number(total_row, 6, total_net, formats["total_value"])
+    sheet.write_number(total_row, 4, display_amount(total_gross), formats["total_value"])
+    sheet.write_number(total_row, 5, display_amount(total_tax), formats["total_value"])
+    sheet.write_number(total_row, 6, display_amount(total_net), formats["total_value"])
 
     sheet.set_column("A:A", 10)
     sheet.set_column("B:B", 14)
@@ -1003,9 +1043,9 @@ def create_dividend_summary_sheet(workbook, formats):
     for col, header in enumerate(overall_headers):
         sheet.write(5, col, header, formats["header"])
 
-    sheet.write_number(6, 0, safe_float(overall["gross_amount"]), formats["currency"])
-    sheet.write_number(6, 1, safe_float(overall["tax_amount"]), formats["currency"])
-    sheet.write_number(6, 2, safe_float(overall["net_amount"]), formats["currency"])
+    sheet.write_number(6, 0, display_amount(safe_float(overall["gross_amount"])), formats["currency"])
+    sheet.write_number(6, 1, display_amount(safe_float(overall["tax_amount"])), formats["currency"])
+    sheet.write_number(6, 2, display_amount(safe_float(overall["net_amount"])), formats["currency"])
     sheet.write_number(6, 3, int(overall["total_records"]), formats["text"])
 
     write_dividend_summary_table(
@@ -1074,9 +1114,9 @@ def write_dividend_summary_table(
     if not rows:
         sheet.write(start_row + 2, start_col, "No Data", formats["text"])
         sheet.write_number(start_row + 2, start_col + 1, 0, formats["text"])
-        sheet.write_number(start_row + 2, start_col + 2, 0, formats["currency"])
-        sheet.write_number(start_row + 2, start_col + 3, 0, formats["currency"])
-        sheet.write_number(start_row + 2, start_col + 4, 0, formats["currency"])
+        sheet.write_number(start_row + 2, start_col + 2, display_amount(0), formats["currency"])
+        sheet.write_number(start_row + 2, start_col + 3, display_amount(0), formats["currency"])
+        sheet.write_number(start_row + 2, start_col + 4, display_amount(0), formats["currency"])
         return
 
     row_number = start_row + 2
@@ -1091,9 +1131,9 @@ def write_dividend_summary_table(
 
         sheet.write(row_number, start_col, first_value, formats["text"])
         sheet.write_number(row_number, start_col + 1, records, formats["text"])
-        sheet.write_number(row_number, start_col + 2, gross_amount, formats["currency"])
-        sheet.write_number(row_number, start_col + 3, tax_amount, formats["currency"])
-        sheet.write_number(row_number, start_col + 4, net_amount, formats["currency"])
+        sheet.write_number(row_number, start_col + 2, display_amount(gross_amount), formats["currency"])
+        sheet.write_number(row_number, start_col + 3, display_amount(tax_amount), formats["currency"])
+        sheet.write_number(row_number, start_col + 4, display_amount(net_amount), formats["currency"])
 
         row_number += 1
 
@@ -1133,10 +1173,10 @@ def create_dividend_forecast_sheet(workbook, formats):
 
     sheet.write_number(6, 0, int(forecast["current_year"]), formats["text"])
     sheet.write_number(6, 1, int(forecast["current_month"]), formats["text"])
-    sheet.write_number(6, 2, safe_float(forecast["total_net_received"]), formats["currency"])
-    sheet.write_number(6, 3, safe_float(forecast["current_year_net"]), formats["currency"])
-    sheet.write_number(6, 4, safe_float(forecast["monthly_forecast"]), formats["currency"])
-    sheet.write_number(6, 5, safe_float(forecast["yearly_forecast"]), formats["currency"])
+    sheet.write_number(6, 2, display_amount(safe_float(forecast["total_net_received"])), formats["currency"])
+    sheet.write_number(6, 3, display_amount(safe_float(forecast["current_year_net"])), formats["currency"])
+    sheet.write_number(6, 4, display_amount(safe_float(forecast["monthly_forecast"])), formats["currency"])
+    sheet.write_number(6, 5, display_amount(safe_float(forecast["yearly_forecast"])), formats["currency"])
     sheet.write_number(6, 6, int(forecast["total_records"]), formats["text"])
 
     sheet.write("A9", "Stock-wise Dividend Yield", formats["section"])
@@ -1166,11 +1206,11 @@ def create_dividend_forecast_sheet(workbook, formats):
         for item in yield_rows:
             sheet.write(row, 0, str(item["symbol"]).upper(), formats["text"])
             sheet.write_number(row, 1, safe_float(item["shares"]), formats["number"])
-            sheet.write_number(row, 2, safe_float(item["investment_value"]), formats["currency"])
-            sheet.write_number(row, 3, safe_float(item["current_value"]), formats["currency"])
-            sheet.write_number(row, 4, safe_float(item["gross_dividend"]), formats["currency"])
-            sheet.write_number(row, 5, safe_float(item["tax_amount"]), formats["currency"])
-            sheet.write_number(row, 6, safe_float(item["net_dividend"]), formats["currency"])
+            sheet.write_number(row, 2, display_amount(safe_float(item["investment_value"])), formats["currency"])
+            sheet.write_number(row, 3, display_amount(safe_float(item["current_value"])), formats["currency"])
+            sheet.write_number(row, 4, display_amount(safe_float(item["gross_dividend"])), formats["currency"])
+            sheet.write_number(row, 5, display_amount(safe_float(item["tax_amount"])), formats["currency"])
+            sheet.write_number(row, 6, display_amount(safe_float(item["net_dividend"])), formats["currency"])
             sheet.write_number(row, 7, int(item["dividend_records"]), formats["text"])
             sheet.write_number(row, 8, safe_float(item["yield_on_cost"]) / 100, formats["percent"])
             sheet.write_number(row, 9, safe_float(item["current_yield"]) / 100, formats["percent"])
@@ -1206,7 +1246,7 @@ def create_dividend_forecast_sheet(workbook, formats):
 
             sheet.write_number(write_row, 0, rank, formats["text"])
             sheet.write(write_row, 1, str(item["symbol"]).upper(), formats["text"])
-            sheet.write_number(write_row, 2, safe_float(item["net_dividend"]), formats["currency"])
+            sheet.write_number(write_row, 2, display_amount(safe_float(item["net_dividend"])), formats["currency"])
             sheet.write_number(write_row, 3, safe_float(item["yield_on_cost"]) / 100, formats["percent"])
             sheet.write_number(write_row, 4, safe_float(item["current_yield"]) / 100, formats["percent"])
             sheet.write_number(write_row, 5, int(item["dividend_records"]), formats["text"])
@@ -1235,7 +1275,7 @@ def create_dividend_forecast_sheet(workbook, formats):
 
     if not monthly_rows:
         sheet.write(monthly_data_start, 0, "No Data", formats["text"])
-        sheet.write_number(monthly_data_start, 4, 0, formats["currency"])
+        sheet.write_number(monthly_data_start, 4, display_amount(0), formats["currency"])
         monthly_rows_for_chart = [["No Data", 0]]
     else:
         monthly_rows_for_chart = []
@@ -1245,9 +1285,9 @@ def create_dividend_forecast_sheet(workbook, formats):
 
             sheet.write(write_row, 0, str(item["month"]), formats["text"])
             sheet.write_number(write_row, 1, int(item["records"]), formats["text"])
-            sheet.write_number(write_row, 2, safe_float(item["gross_amount"]), formats["currency"])
-            sheet.write_number(write_row, 3, safe_float(item["tax_amount"]), formats["currency"])
-            sheet.write_number(write_row, 4, safe_float(item["net_amount"]), formats["currency"])
+            sheet.write_number(write_row, 2, display_amount(safe_float(item["gross_amount"])), formats["currency"])
+            sheet.write_number(write_row, 3, display_amount(safe_float(item["tax_amount"])), formats["currency"])
+            sheet.write_number(write_row, 4, display_amount(safe_float(item["net_amount"])), formats["currency"])
 
             monthly_rows_for_chart.append([
                 str(item["month"]),
@@ -1273,16 +1313,16 @@ def create_dividend_forecast_sheet(workbook, formats):
 
     if not yearly_rows:
         sheet.write(yearly_data_start, yearly_start_col, "No Data", formats["text"])
-        sheet.write_number(yearly_data_start, yearly_start_col + 4, 0, formats["currency"])
+        sheet.write_number(yearly_data_start, yearly_start_col + 4, display_amount(0), formats["currency"])
     else:
         for index, item in enumerate(yearly_rows):
             write_row = yearly_data_start + index
 
             sheet.write(write_row, yearly_start_col, str(item["year"]), formats["text"])
             sheet.write_number(write_row, yearly_start_col + 1, int(item["records"]), formats["text"])
-            sheet.write_number(write_row, yearly_start_col + 2, safe_float(item["gross_amount"]), formats["currency"])
-            sheet.write_number(write_row, yearly_start_col + 3, safe_float(item["tax_amount"]), formats["currency"])
-            sheet.write_number(write_row, yearly_start_col + 4, safe_float(item["net_amount"]), formats["currency"])
+            sheet.write_number(write_row, yearly_start_col + 2, display_amount(safe_float(item["gross_amount"])), formats["currency"])
+            sheet.write_number(write_row, yearly_start_col + 3, display_amount(safe_float(item["tax_amount"])), formats["currency"])
+            sheet.write_number(write_row, yearly_start_col + 4, display_amount(safe_float(item["net_amount"])), formats["currency"])
 
     chart_start_row = trend_start_row + max(len(monthly_rows), len(yearly_rows), 1) + 4
 
@@ -1544,7 +1584,7 @@ def create_pdf_pie_chart(title, rows, Drawing, String, Pie, colors):
         return None
 
     labels = [str(row[0]) for row in rows]
-    values = [safe_float(row[1]) for row in rows]
+    values = [display_amount(row[1]) for row in rows]
 
     if sum(values) <= 0:
         return None
@@ -1604,7 +1644,7 @@ def create_pdf_bar_chart(title, rows, Drawing, String, VerticalBarChart, colors,
         return None
 
     labels = [str(row[0]) for row in rows]
-    values = [safe_float(row[1]) for row in rows]
+    values = [display_amount(row[1]) for row in rows]
 
     if not values:
         return None
@@ -2267,6 +2307,19 @@ def safe_get(item, key, default=None):
         return default
 
 
+
+def display_amount(value):
+    """
+    Convert PKR amount to selected display currency for Excel numeric cells.
+    """
+
+    try:
+        return convert_from_pkr(value)
+
+    except Exception:
+        return safe_float(value)
+
+
 def safe_float(value):
     """
     Convert value to float safely.
@@ -2281,10 +2334,14 @@ def safe_float(value):
 
 def format_money(value):
     """
-    Format money for PDF.
+    Format money for PDF according to selected display currency.
     """
 
-    return f"PKR {safe_float(value):,.2f}"
+    try:
+        return format_display_currency(value)
+
+    except Exception:
+        return f"PKR {safe_float(value):,.2f}"
 
 
 def format_percent(value):
