@@ -44,7 +44,7 @@ from dividend_yield_window import DividendYieldWindow
 from wealth_asset_window import WealthAssetWindow
 from wealth_projection_window import WealthProjectionWindow
 from smart_import_window import SmartImportWindow
-from services.mutual_fund_service import get_mutual_fund_summary
+from services.mutual_fund_service import get_mutual_fund_summary, get_all_mutual_funds
 from services.dividend_yield_service import get_dividend_dashboard_summary
 from services.wealth_asset_service import get_phase10_dashboard_summary
 from services.currency_service import (
@@ -134,6 +134,16 @@ class MainWindow(QMainWindow):
 
         combined_summary_layout = self.create_combined_summary_cards()
 
+        mutual_fund_summary_heading = QLabel("🏦 Mutual Funds Summary")
+        mutual_fund_summary_heading.setAlignment(Qt.AlignCenter)
+        mutual_fund_summary_heading.setStyleSheet("""
+            font-size:16px;
+            font-weight:bold;
+            padding:6px;
+        """)
+
+        mutual_fund_summary_layout = self.create_mutual_fund_dashboard_cards()
+
         wealth_summary_heading = QLabel("🏦 PF, Pension & Bank Cash Summary")
         wealth_summary_heading.setAlignment(Qt.AlignCenter)
         wealth_summary_heading.setStyleSheet("""
@@ -174,6 +184,8 @@ class MainWindow(QMainWindow):
         content_layout.addLayout(summary_layout)
         content_layout.addWidget(combined_summary_heading)
         content_layout.addLayout(combined_summary_layout)
+        content_layout.addWidget(mutual_fund_summary_heading)
+        content_layout.addLayout(mutual_fund_summary_layout)
         content_layout.addWidget(wealth_summary_heading)
         content_layout.addLayout(wealth_summary_layout)
         content_layout.addWidget(dividend_summary_heading)
@@ -275,6 +287,28 @@ class MainWindow(QMainWindow):
             ("Total Current Value", "combined_current"),
             ("Total Profit / Loss", "combined_profit"),
             ("Total Profit %", "combined_profit_percent"),
+        ]
+
+        for title, key in cards:
+
+            card = self.create_card(title, key)
+            layout.addWidget(card)
+
+        return layout
+
+
+
+    def create_mutual_fund_dashboard_cards(self):
+
+        layout = QHBoxLayout()
+
+        cards = [
+            ("KMIF", "mf_kmif"),
+            ("MIF Growth", "mf_mif_growth"),
+            ("MIF Income", "mf_mif_income"),
+            ("MCF / MIIF", "mf_cash_income"),
+            ("Total MF Value", "mf_total_value"),
+            ("Active Funds", "mf_active_count"),
         ]
 
         for title, key in cards:
@@ -419,6 +453,7 @@ class MainWindow(QMainWindow):
             self.display_holdings(self.all_holdings)
             self.update_summary_cards(self.all_holdings)
             self.update_combined_summary_cards(self.all_holdings)
+            self.update_mutual_fund_dashboard_cards()
             self.update_wealth_asset_dashboard_cards()
             self.update_dividend_dashboard_cards()
             self.update_currency_conversion_note()
@@ -661,6 +696,113 @@ class MainWindow(QMainWindow):
             f"Search cleared. Total Holdings: {len(self.all_holdings)}"
         )
 
+
+
+
+    def update_mutual_fund_dashboard_cards(self):
+
+        try:
+            funds = get_all_mutual_funds()
+
+            kmif_value = 0
+            mif_growth_value = 0
+            mif_income_value = 0
+            cash_income_value = 0
+            total_value = 0
+            active_count = 0
+
+            for item in funds:
+
+                fund_name = str(item.get("fund", "")).upper().strip()
+
+                units = float(item.get("units", 0) or 0)
+                current_nav = float(item.get("current_nav", 0) or 0)
+
+                current_value = item.get("current_value", None)
+
+                if current_value is None:
+                    current_value = units * current_nav
+                else:
+                    current_value = float(current_value or 0)
+
+                total_value += current_value
+
+                if current_value > 0:
+                    active_count += 1
+
+                if fund_name.startswith("KMIF"):
+                    kmif_value += current_value
+
+                elif fund_name.startswith("MIF") and "INCOME" in fund_name:
+                    mif_income_value += current_value
+
+                elif fund_name.startswith("MIF"):
+                    mif_growth_value += current_value
+
+                elif (
+                    fund_name.startswith("MCF")
+                    or fund_name.startswith("MIIF")
+                    or "CASH" in fund_name
+                    or "INCOME" in fund_name
+                ):
+                    cash_income_value += current_value
+
+            self.summary_labels["mf_kmif"].setText(
+                self.format_currency(kmif_value)
+            )
+
+            self.summary_labels["mf_mif_growth"].setText(
+                self.format_currency(mif_growth_value)
+            )
+
+            self.summary_labels["mf_mif_income"].setText(
+                self.format_currency(mif_income_value)
+            )
+
+            self.summary_labels["mf_cash_income"].setText(
+                self.format_currency(cash_income_value)
+            )
+
+            self.summary_labels["mf_total_value"].setText(
+                self.format_currency(total_value)
+            )
+
+            self.summary_labels["mf_active_count"].setText(
+                str(active_count)
+            )
+
+            mf_keys = [
+                "mf_kmif",
+                "mf_mif_growth",
+                "mf_mif_income",
+                "mf_cash_income",
+                "mf_total_value",
+                "mf_active_count",
+            ]
+
+            for key in mf_keys:
+
+                self.summary_labels[key].setStyleSheet("""
+                    font-size:17px;
+                    font-weight:bold;
+                    color:green;
+                """)
+
+        except Exception:
+
+            default_values = {
+                "mf_kmif": self.format_currency(0),
+                "mf_mif_growth": self.format_currency(0),
+                "mf_mif_income": self.format_currency(0),
+                "mf_cash_income": self.format_currency(0),
+                "mf_total_value": self.format_currency(0),
+                "mf_active_count": "0",
+            }
+
+            for key, value in default_values.items():
+
+                if key in self.summary_labels:
+                    self.summary_labels[key].setText(value)
 
 
 
