@@ -48,6 +48,13 @@ from services.currency_service import (
     get_conversion_note,
     get_display_currency,
 )
+from services.wealth_asset_service import (
+    initialize_wealth_assets,
+    get_all_wealth_assets,
+    get_all_wealth_asset_transactions,
+    get_wealth_assets_summary,
+    get_phase10_dashboard_summary,
+)
 
 
 def create_reports(
@@ -67,6 +74,9 @@ def create_reports(
         5. Dividend Summary
         6. Dividend Charts
         7. Dividend Forecast
+        8. Wealth Assets Summary
+        9. Wealth Assets Detail
+        10. Wealth Transactions
 
     Returns:
         {
@@ -91,10 +101,13 @@ def create_reports(
     combined_pdf_file = output / "Zain_Wealth_Manager_Combined_Report.pdf"
 
     initialize_database()
+    initialize_wealth_assets()
 
     psx_holdings = get_all_holdings()
     mutual_funds = get_all_mutual_funds()
     dividends = get_all_dividends()
+    wealth_assets = get_all_wealth_assets()
+    wealth_transactions = get_all_wealth_asset_transactions()
 
     result = {
         "excel_file": None,
@@ -141,14 +154,16 @@ def create_reports(
             workbook,
             psx_holdings,
             mutual_funds,
-            formats
+            formats,
+            wealth_assets
         )
 
         create_charts_sheet(
             workbook,
             psx_holdings,
             mutual_funds,
-            formats
+            formats,
+            wealth_assets
         )
 
         create_dividend_income_sheet(
@@ -172,6 +187,24 @@ def create_reports(
             formats
         )
 
+        create_wealth_assets_summary_sheet(
+            workbook,
+            wealth_assets,
+            formats
+        )
+
+        create_wealth_assets_detail_sheet(
+            workbook,
+            wealth_assets,
+            formats
+        )
+
+        create_wealth_asset_transactions_sheet(
+            workbook,
+            wealth_transactions,
+            formats
+        )
+
         workbook.close()
 
         result["excel_file"] = excel_file
@@ -185,12 +218,14 @@ def create_reports(
         except Exception:
             result["legacy_pdf_file"] = None
 
-        # Create new combined PDF report with PSX + Mutual Funds + Dividends.
+        # Create new combined PDF report with PSX + Mutual Funds + Dividends + Wealth Assets.
         create_combined_pdf_report(
             combined_pdf_file,
             psx_holdings,
             mutual_funds,
-            dividends
+            dividends,
+            wealth_assets,
+            wealth_transactions
         )
 
         result["pdf_file"] = combined_pdf_file
@@ -533,7 +568,7 @@ def create_mutual_funds_portfolio_sheet(workbook, mutual_funds, formats):
     sheet.freeze_panes(4, 0)
 
 
-def create_overall_wealth_sheet(workbook, holdings, mutual_funds, formats):
+def create_overall_wealth_sheet(workbook, holdings, mutual_funds, formats, wealth_assets=None):
     """
     Create overall wealth summary sheet.
     """
@@ -566,8 +601,14 @@ def create_overall_wealth_sheet(workbook, holdings, mutual_funds, formats):
     mf_profit = mf_current - mf_investment
     mf_profit_percent = calculate_profit_percent(mf_investment, mf_profit)
 
-    total_investment = psx_investment + mf_investment
-    total_current = psx_current + mf_current
+    wealth_assets = wealth_assets or []
+    wealth_current = calculate_wealth_assets_total_balance(wealth_assets)
+    wealth_investment = wealth_current
+    wealth_profit = 0
+    wealth_profit_percent = 0
+
+    total_investment = psx_investment + mf_investment + wealth_investment
+    total_current = psx_current + mf_current + wealth_current
     total_profit = total_current - total_investment
     total_profit_percent = calculate_profit_percent(total_investment, total_profit)
 
@@ -589,12 +630,20 @@ def create_overall_wealth_sheet(workbook, holdings, mutual_funds, formats):
             len(mutual_funds),
         ],
         [
+            "Manual Wealth Assets",
+            wealth_investment,
+            wealth_current,
+            wealth_profit,
+            wealth_profit_percent,
+            len(wealth_assets),
+        ],
+        [
             "Combined Total",
             total_investment,
             total_current,
             total_profit,
             total_profit_percent,
-            len(holdings) + len(mutual_funds),
+            len(holdings) + len(mutual_funds) + len(wealth_assets),
         ],
     ]
 
@@ -632,7 +681,7 @@ def create_overall_wealth_sheet(workbook, holdings, mutual_funds, formats):
 
 
 
-def create_charts_sheet(workbook, holdings, mutual_funds, formats):
+def create_charts_sheet(workbook, holdings, mutual_funds, formats, wealth_assets=None):
     """
     Create Excel charts sheet:
         1. PSX Allocation
@@ -649,7 +698,7 @@ def create_charts_sheet(workbook, holdings, mutual_funds, formats):
 
     psx_rows = get_psx_allocation_rows(holdings)
     mutual_fund_rows = get_mutual_fund_allocation_rows(mutual_funds)
-    overall_rows = get_overall_allocation_rows(holdings, mutual_funds)
+    overall_rows = get_overall_allocation_rows(holdings, mutual_funds, wealth_assets)
     profit_loss_rows = get_profit_loss_rows(holdings, mutual_funds)
 
     write_chart_source_table(
@@ -891,13 +940,14 @@ def get_mutual_fund_allocation_rows(mutual_funds):
     return rows
 
 
-def get_overall_allocation_rows(holdings, mutual_funds):
+def get_overall_allocation_rows(holdings, mutual_funds, wealth_assets=None):
     """
     Return overall wealth allocation rows.
     """
 
     psx_current = calculate_psx_total_current_value(holdings)
     mf_current = calculate_mf_total_current_value(mutual_funds)
+    wealth_current = calculate_wealth_assets_total_balance(wealth_assets or [])
 
     rows = []
 
@@ -906,6 +956,9 @@ def get_overall_allocation_rows(holdings, mutual_funds):
 
     if mf_current > 0:
         rows.append(["Mutual Funds", mf_current])
+
+    if wealth_current > 0:
+        rows.append(["Manual Wealth Assets", wealth_current])
 
     return rows
 
@@ -932,6 +985,240 @@ def get_profit_loss_rows(holdings, mutual_funds):
         rows.append(["Mutual Funds", mf_profit])
 
     return rows
+
+
+
+def create_wealth_assets_summary_sheet(workbook, wealth_assets, formats):
+    """
+    Create summary sheet for PF, Pension/MTPF, Bank Cash and Other assets.
+    """
+
+    sheet = safe_add_worksheet(workbook, "Wealth Assets Summary")
+
+    sheet.merge_range("A1:H1", "PF, Pension & Bank Cash Summary", formats["title"])
+    sheet.write("A2", "Generated On", formats["section"])
+    sheet.write("B2", datetime.now().strftime("%d-%m-%Y %I:%M %p"), formats["text"])
+
+    try:
+        dashboard = get_phase10_dashboard_summary()
+    except Exception:
+        dashboard = {
+            "provident_fund": calculate_wealth_assets_total_balance_by_type(wealth_assets, "Provident Fund"),
+            "pension_mtpf": calculate_wealth_assets_total_balance_by_type(wealth_assets, "Pension / MTPF"),
+            "bank_cash": calculate_wealth_assets_total_balance_by_type(wealth_assets, "Bank Cash"),
+            "other_assets": calculate_wealth_assets_total_balance_by_type(wealth_assets, "Other"),
+            "total_balance": calculate_wealth_assets_total_balance(wealth_assets),
+            "monthly_contribution": calculate_wealth_assets_monthly_contribution(wealth_assets),
+            "employer_contribution": calculate_wealth_assets_employer_contribution(wealth_assets),
+            "total_monthly_saving": (
+                calculate_wealth_assets_monthly_contribution(wealth_assets)
+                + calculate_wealth_assets_employer_contribution(wealth_assets)
+            ),
+            "total_records": len(wealth_assets),
+        }
+
+    summary_rows = [
+        ["Provident Fund", safe_float(dashboard.get("provident_fund", 0))],
+        ["Pension / MTPF", safe_float(dashboard.get("pension_mtpf", 0))],
+        ["Bank Cash", safe_float(dashboard.get("bank_cash", 0))],
+        ["Other Assets", safe_float(dashboard.get("other_assets", 0))],
+        ["Total Manual Wealth", safe_float(dashboard.get("total_balance", 0))],
+        ["Monthly Contribution", safe_float(dashboard.get("monthly_contribution", 0))],
+        ["Employer Contribution", safe_float(dashboard.get("employer_contribution", 0))],
+        ["Total Monthly Saving", safe_float(dashboard.get("total_monthly_saving", 0))],
+        ["Total Records", safe_float(dashboard.get("total_records", len(wealth_assets)))],
+    ]
+
+    sheet.write("A4", "Metric", formats["header"])
+    sheet.write("B4", "Value", formats["header"])
+
+    for row_index, row_data in enumerate(summary_rows, start=4):
+        sheet.write(row_index, 0, row_data[0], formats["text"])
+
+        if row_data[0] == "Total Records":
+            sheet.write_number(row_index, 1, int(row_data[1]), formats["text"])
+        else:
+            sheet.write_number(row_index, 1, display_amount(row_data[1]), formats["currency"])
+
+    sheet.write("D4", "Asset Type", formats["header"])
+    sheet.write("E4", "Records", formats["header"])
+    sheet.write("F4", "Current Balance", formats["header"])
+    sheet.write("G4", "Monthly Contribution", formats["header"])
+    sheet.write("H4", "Employer Contribution", formats["header"])
+
+    try:
+        type_rows = get_wealth_assets_summary()
+    except Exception:
+        type_rows = build_wealth_asset_summary_rows(wealth_assets)
+
+    row = 4
+
+    if not type_rows:
+        sheet.write(row, 3, "No Data", formats["text"])
+        sheet.write_number(row, 4, 0, formats["text"])
+        sheet.write_number(row, 5, display_amount(0), formats["currency"])
+        sheet.write_number(row, 6, display_amount(0), formats["currency"])
+        sheet.write_number(row, 7, display_amount(0), formats["currency"])
+    else:
+        for item in type_rows:
+            sheet.write(row, 3, str(safe_get(item, "asset_type", "")), formats["text"])
+            sheet.write_number(row, 4, int(safe_get(item, "records", 0)), formats["text"])
+            sheet.write_number(row, 5, display_amount(safe_get(item, "total_balance", 0)), formats["currency"])
+            sheet.write_number(row, 6, display_amount(safe_get(item, "monthly_contribution", 0)), formats["currency"])
+            sheet.write_number(row, 7, display_amount(safe_get(item, "employer_contribution", 0)), formats["currency"])
+            row += 1
+
+    total_row = max(row + 1, 15)
+
+    sheet.write(total_row, 4, "Total", formats["total_label"])
+    sheet.write_number(total_row, 5, display_amount(calculate_wealth_assets_total_balance(wealth_assets)), formats["total_value"])
+    sheet.write_number(total_row, 6, display_amount(calculate_wealth_assets_monthly_contribution(wealth_assets)), formats["total_value"])
+    sheet.write_number(total_row, 7, display_amount(calculate_wealth_assets_employer_contribution(wealth_assets)), formats["total_value"])
+
+    sheet.set_column("A:A", 26)
+    sheet.set_column("B:B", 22)
+    sheet.set_column("D:D", 24)
+    sheet.set_column("E:E", 12)
+    sheet.set_column("F:H", 22)
+
+
+def create_wealth_assets_detail_sheet(workbook, wealth_assets, formats):
+    """
+    Create detailed wealth assets sheet.
+    """
+
+    sheet = safe_add_worksheet(workbook, "Wealth Assets Detail")
+
+    sheet.merge_range("A1:K1", "Wealth Assets Detail", formats["title"])
+    sheet.write("A2", "Generated On", formats["section"])
+    sheet.write("B2", datetime.now().strftime("%d-%m-%Y %I:%M %p"), formats["text"])
+
+    headers = [
+        "ID",
+        "Asset Type",
+        "Account Name",
+        "Institution",
+        "Current Balance",
+        "Monthly Contribution",
+        "Employer Contribution",
+        "Start Date",
+        "Last Updated",
+        "Status",
+        "Remarks",
+    ]
+
+    for col, header in enumerate(headers):
+        sheet.write(3, col, header, formats["header"])
+
+    row = 4
+
+    if not wealth_assets:
+        sheet.write(row, 0, "No Data", formats["text"])
+    else:
+        for item in wealth_assets:
+            status = "Active"
+            if int(safe_get(item, "is_active", 1) or 0) != 1:
+                status = "Inactive"
+
+            sheet.write(row, 0, safe_get(item, "id", ""), formats["text"])
+            sheet.write(row, 1, str(safe_get(item, "asset_type", "")), formats["text"])
+            sheet.write(row, 2, str(safe_get(item, "account_name", "")), formats["text"])
+            sheet.write(row, 3, str(safe_get(item, "institution", "")), formats["text"])
+            sheet.write_number(row, 4, display_amount(safe_get(item, "current_balance", 0)), formats["currency"])
+            sheet.write_number(row, 5, display_amount(safe_get(item, "monthly_contribution", 0)), formats["currency"])
+            sheet.write_number(row, 6, display_amount(safe_get(item, "employer_contribution", 0)), formats["currency"])
+            sheet.write(row, 7, str(safe_get(item, "start_date", "")), formats["text"])
+            sheet.write(row, 8, str(safe_get(item, "last_updated", "")), formats["text"])
+            sheet.write(row, 9, status, formats["text"])
+            sheet.write(row, 10, str(safe_get(item, "remarks", "")), formats["text"])
+            row += 1
+
+    total_row = row + 1
+    sheet.write(total_row, 3, "Total", formats["total_label"])
+    sheet.write_number(total_row, 4, display_amount(calculate_wealth_assets_total_balance(wealth_assets)), formats["total_value"])
+    sheet.write_number(total_row, 5, display_amount(calculate_wealth_assets_monthly_contribution(wealth_assets)), formats["total_value"])
+    sheet.write_number(total_row, 6, display_amount(calculate_wealth_assets_employer_contribution(wealth_assets)), formats["total_value"])
+
+    sheet.set_column("A:A", 10)
+    sheet.set_column("B:B", 20)
+    sheet.set_column("C:D", 28)
+    sheet.set_column("E:G", 22)
+    sheet.set_column("H:J", 16)
+    sheet.set_column("K:K", 45)
+    sheet.freeze_panes(4, 0)
+
+
+def create_wealth_asset_transactions_sheet(workbook, transactions, formats):
+    """
+    Create wealth asset transactions sheet.
+    """
+
+    sheet = safe_add_worksheet(workbook, "Wealth Transactions")
+
+    sheet.merge_range("A1:I1", "Wealth Asset Transactions", formats["title"])
+    sheet.write("A2", "Generated On", formats["section"])
+    sheet.write("B2", datetime.now().strftime("%d-%m-%Y %I:%M %p"), formats["text"])
+
+    headers = [
+        "ID",
+        "Asset",
+        "Institution",
+        "Transaction Type",
+        "Amount",
+        "Transaction Date",
+        "Remarks",
+        "Created At",
+        "Asset ID",
+    ]
+
+    for col, header in enumerate(headers):
+        sheet.write(3, col, header, formats["header"])
+
+    row = 4
+    total_increase = 0
+    total_withdrawal = 0
+
+    if not transactions:
+        sheet.write(row, 0, "No Data", formats["text"])
+    else:
+        for item in transactions:
+            transaction_type = str(safe_get(item, "transaction_type", ""))
+            amount = safe_float(safe_get(item, "amount", 0))
+            asset_label = f"{safe_get(item, 'asset_type', '')} - {safe_get(item, 'account_name', '')}"
+
+            if transaction_type == "Withdrawal":
+                total_withdrawal += amount
+            else:
+                total_increase += amount
+
+            sheet.write(row, 0, safe_get(item, "id", ""), formats["text"])
+            sheet.write(row, 1, asset_label, formats["text"])
+            sheet.write(row, 2, str(safe_get(item, "institution", "")), formats["text"])
+            sheet.write(row, 3, transaction_type, formats["text"])
+            sheet.write_number(row, 4, display_amount(amount), formats["currency"])
+            sheet.write(row, 5, str(safe_get(item, "transaction_date", "")), formats["text"])
+            sheet.write(row, 6, str(safe_get(item, "remarks", "")), formats["text"])
+            sheet.write(row, 7, str(safe_get(item, "created_at", "")), formats["text"])
+            sheet.write(row, 8, safe_get(item, "asset_id", ""), formats["text"])
+            row += 1
+
+    total_row = row + 1
+    sheet.write(total_row, 3, "Total Increase", formats["total_label"])
+    sheet.write_number(total_row, 4, display_amount(total_increase), formats["total_value"])
+    sheet.write(total_row + 1, 3, "Total Withdrawal", formats["total_label"])
+    sheet.write_number(total_row + 1, 4, display_amount(total_withdrawal), formats["total_value"])
+    sheet.write(total_row + 2, 3, "Net Transactions", formats["total_label"])
+    sheet.write_number(total_row + 2, 4, display_amount(total_increase - total_withdrawal), formats["total_value"])
+
+    sheet.set_column("A:A", 10)
+    sheet.set_column("B:B", 34)
+    sheet.set_column("C:C", 22)
+    sheet.set_column("D:D", 22)
+    sheet.set_column("E:E", 20)
+    sheet.set_column("F:F", 16)
+    sheet.set_column("G:H", 36)
+    sheet.set_column("I:I", 12)
+    sheet.freeze_panes(4, 0)
 
 
 
@@ -1500,7 +1787,7 @@ def chart_dict_to_rows(data):
     return rows
 
 
-def create_pdf_chart_drawings(holdings, mutual_funds):
+def create_pdf_chart_drawings(holdings, mutual_funds, wealth_assets=None):
     """
     Create simple PDF chart drawings.
     If ReportLab graphics are not available, return an empty list.
@@ -1519,7 +1806,7 @@ def create_pdf_chart_drawings(holdings, mutual_funds):
 
     psx_rows = get_psx_allocation_rows(holdings)
     mutual_fund_rows = get_mutual_fund_allocation_rows(mutual_funds)
-    overall_rows = get_overall_allocation_rows(holdings, mutual_funds)
+    overall_rows = get_overall_allocation_rows(holdings, mutual_funds, wealth_assets)
     profit_loss_rows = get_profit_loss_rows(holdings, mutual_funds)
 
     psx_chart = create_pdf_pie_chart(
@@ -1718,9 +2005,9 @@ def get_pdf_color(index, colors):
 
     return palette[index % len(palette)]
 
-def create_combined_pdf_report(pdf_file, holdings, mutual_funds, dividends):
+def create_combined_pdf_report(pdf_file, holdings, mutual_funds, dividends, wealth_assets=None, wealth_transactions=None):
     """
-    Create PDF report with PSX, Mutual Funds, Dividends and Overall Wealth Summary.
+    Create PDF report with PSX, Mutual Funds, Dividends, Wealth Assets and Overall Wealth Summary.
     """
 
     try:
@@ -1761,7 +2048,19 @@ def create_combined_pdf_report(pdf_file, holdings, mutual_funds, dividends):
     story.append(Spacer(1, 16))
 
     story.append(Paragraph("Overall Wealth Summary", styles["Heading2"]))
-    story.append(create_pdf_table(get_overall_summary_rows(holdings, mutual_funds)))
+    story.append(create_pdf_table(get_overall_summary_rows(holdings, mutual_funds, wealth_assets)))
+    story.append(Spacer(1, 16))
+
+    story.append(Paragraph("Manual Wealth Assets Summary", styles["Heading2"]))
+    story.append(create_pdf_table(get_wealth_assets_summary_pdf_rows(wealth_assets)))
+    story.append(Spacer(1, 16))
+
+    story.append(Paragraph("Manual Wealth Assets Detail", styles["Heading2"]))
+    story.append(create_pdf_table(get_wealth_assets_detail_pdf_rows(wealth_assets)))
+    story.append(Spacer(1, 16))
+
+    story.append(Paragraph("Wealth Asset Transactions", styles["Heading2"]))
+    story.append(create_pdf_table(get_wealth_asset_transactions_pdf_rows(wealth_transactions)))
     story.append(Spacer(1, 16))
 
     story.append(Paragraph("Dividend Income Summary", styles["Heading2"]))
@@ -1786,7 +2085,7 @@ def create_combined_pdf_report(pdf_file, holdings, mutual_funds, dividends):
 
     story.append(Paragraph("Charts & Visual Analytics", styles["Heading2"]))
 
-    chart_drawings = create_pdf_chart_drawings(holdings, mutual_funds)
+    chart_drawings = create_pdf_chart_drawings(holdings, mutual_funds, wealth_assets)
 
     for chart in chart_drawings:
         story.append(chart)
@@ -1837,7 +2136,7 @@ def create_pdf_table(data):
     return table
 
 
-def get_overall_summary_rows(holdings, mutual_funds):
+def get_overall_summary_rows(holdings, mutual_funds, wealth_assets=None):
     """
     Return PDF rows for overall summary.
     """
@@ -1852,8 +2151,14 @@ def get_overall_summary_rows(holdings, mutual_funds):
     mf_profit = mf_current - mf_investment
     mf_profit_percent = calculate_profit_percent(mf_investment, mf_profit)
 
-    total_investment = psx_investment + mf_investment
-    total_current = psx_current + mf_current
+    wealth_assets = wealth_assets or []
+    wealth_current = calculate_wealth_assets_total_balance(wealth_assets)
+    wealth_investment = wealth_current
+    wealth_profit = 0
+    wealth_profit_percent = 0
+
+    total_investment = psx_investment + mf_investment + wealth_investment
+    total_current = psx_current + mf_current + wealth_current
     total_profit = total_current - total_investment
     total_profit_percent = calculate_profit_percent(total_investment, total_profit)
 
@@ -1883,12 +2188,20 @@ def get_overall_summary_rows(holdings, mutual_funds):
             str(len(mutual_funds)),
         ],
         [
+            "Manual Wealth Assets",
+            format_money(wealth_investment),
+            format_money(wealth_current),
+            format_money(wealth_profit),
+            format_percent(wealth_profit_percent),
+            str(len(wealth_assets)),
+        ],
+        [
             "Combined Total",
             format_money(total_investment),
             format_money(total_current),
             format_money(total_profit),
             format_percent(total_profit_percent),
-            str(len(holdings) + len(mutual_funds)),
+            str(len(holdings) + len(mutual_funds) + len(wealth_assets)),
         ],
     ]
 
@@ -2223,6 +2536,194 @@ def get_dividend_records_pdf_rows(dividends):
         ])
 
     return rows
+
+
+def get_wealth_assets_summary_pdf_rows(wealth_assets):
+    """
+    Return PDF rows for manual wealth assets summary.
+    """
+
+    wealth_assets = wealth_assets or []
+
+    try:
+        dashboard = get_phase10_dashboard_summary()
+    except Exception:
+        dashboard = {
+            "provident_fund": calculate_wealth_assets_total_balance_by_type(wealth_assets, "Provident Fund"),
+            "pension_mtpf": calculate_wealth_assets_total_balance_by_type(wealth_assets, "Pension / MTPF"),
+            "bank_cash": calculate_wealth_assets_total_balance_by_type(wealth_assets, "Bank Cash"),
+            "other_assets": calculate_wealth_assets_total_balance_by_type(wealth_assets, "Other"),
+            "total_balance": calculate_wealth_assets_total_balance(wealth_assets),
+            "monthly_contribution": calculate_wealth_assets_monthly_contribution(wealth_assets),
+            "employer_contribution": calculate_wealth_assets_employer_contribution(wealth_assets),
+            "total_monthly_saving": (
+                calculate_wealth_assets_monthly_contribution(wealth_assets)
+                + calculate_wealth_assets_employer_contribution(wealth_assets)
+            ),
+            "total_records": len(wealth_assets),
+        }
+
+    return [
+        ["Metric", "Value"],
+        ["Provident Fund", format_money(dashboard.get("provident_fund", 0))],
+        ["Pension / MTPF", format_money(dashboard.get("pension_mtpf", 0))],
+        ["Bank Cash", format_money(dashboard.get("bank_cash", 0))],
+        ["Other Assets", format_money(dashboard.get("other_assets", 0))],
+        ["Total Manual Wealth", format_money(dashboard.get("total_balance", 0))],
+        ["Monthly Contribution", format_money(dashboard.get("monthly_contribution", 0))],
+        ["Employer Contribution", format_money(dashboard.get("employer_contribution", 0))],
+        ["Total Monthly Saving", format_money(dashboard.get("total_monthly_saving", 0))],
+        ["Total Records", str(dashboard.get("total_records", len(wealth_assets)))],
+    ]
+
+
+def get_wealth_assets_detail_pdf_rows(wealth_assets):
+    """
+    Return PDF rows for manual wealth assets detail.
+    """
+
+    rows = [[
+        "Type",
+        "Account",
+        "Institution",
+        "Balance",
+        "Monthly",
+        "Employer",
+        "Updated",
+    ]]
+
+    wealth_assets = wealth_assets or []
+
+    if not wealth_assets:
+        rows.append(["No Data", "", "", format_money(0), format_money(0), format_money(0), ""])
+        return rows
+
+    for item in wealth_assets:
+        rows.append([
+            str(safe_get(item, "asset_type", "")),
+            str(safe_get(item, "account_name", "")),
+            str(safe_get(item, "institution", "")),
+            format_money(safe_get(item, "current_balance", 0)),
+            format_money(safe_get(item, "monthly_contribution", 0)),
+            format_money(safe_get(item, "employer_contribution", 0)),
+            str(safe_get(item, "last_updated", "")),
+        ])
+
+    return rows
+
+
+def get_wealth_asset_transactions_pdf_rows(transactions):
+    """
+    Return PDF rows for manual wealth asset transactions.
+    """
+
+    rows = [[
+        "Asset",
+        "Type",
+        "Amount",
+        "Date",
+        "Remarks",
+    ]]
+
+    transactions = transactions or []
+
+    if not transactions:
+        rows.append(["No Data", "", format_money(0), "", ""])
+        return rows
+
+    for item in transactions:
+        asset_label = f"{safe_get(item, 'asset_type', '')} - {safe_get(item, 'account_name', '')}"
+
+        rows.append([
+            asset_label,
+            str(safe_get(item, "transaction_type", "")),
+            format_money(safe_get(item, "amount", 0)),
+            str(safe_get(item, "transaction_date", "")),
+            str(safe_get(item, "remarks", "")),
+        ])
+
+    return rows
+
+
+def calculate_wealth_assets_total_balance(wealth_assets):
+    """
+    Calculate total current balance of manual wealth assets.
+    """
+
+    total = 0
+
+    for item in wealth_assets or []:
+        total += safe_float(safe_get(item, "current_balance", 0))
+
+    return total
+
+
+def calculate_wealth_assets_monthly_contribution(wealth_assets):
+    """
+    Calculate total monthly contribution of manual wealth assets.
+    """
+
+    total = 0
+
+    for item in wealth_assets or []:
+        total += safe_float(safe_get(item, "monthly_contribution", 0))
+
+    return total
+
+
+def calculate_wealth_assets_employer_contribution(wealth_assets):
+    """
+    Calculate total employer contribution of manual wealth assets.
+    """
+
+    total = 0
+
+    for item in wealth_assets or []:
+        total += safe_float(safe_get(item, "employer_contribution", 0))
+
+    return total
+
+
+def calculate_wealth_assets_total_balance_by_type(wealth_assets, asset_type):
+    """
+    Calculate total balance by asset type.
+    """
+
+    total = 0
+
+    for item in wealth_assets or []:
+        if str(safe_get(item, "asset_type", "")) == str(asset_type):
+            total += safe_float(safe_get(item, "current_balance", 0))
+
+    return total
+
+
+def build_wealth_asset_summary_rows(wealth_assets):
+    """
+    Build summary rows by asset type from asset records.
+    """
+
+    summary = {}
+
+    for item in wealth_assets or []:
+        asset_type = str(safe_get(item, "asset_type", "Other"))
+
+        if asset_type not in summary:
+            summary[asset_type] = {
+                "asset_type": asset_type,
+                "records": 0,
+                "total_balance": 0,
+                "monthly_contribution": 0,
+                "employer_contribution": 0,
+            }
+
+        summary[asset_type]["records"] += 1
+        summary[asset_type]["total_balance"] += safe_float(safe_get(item, "current_balance", 0))
+        summary[asset_type]["monthly_contribution"] += safe_float(safe_get(item, "monthly_contribution", 0))
+        summary[asset_type]["employer_contribution"] += safe_float(safe_get(item, "employer_contribution", 0))
+
+    return list(summary.values())
+
 
 
 def calculate_psx_total_investment(holdings):
