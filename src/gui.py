@@ -40,6 +40,7 @@ from charts_window import ChartsWindow
 from dividend_window import DividendWindow
 from dividend_charts_window import DividendChartsWindow
 from dividend_yield_window import DividendYieldWindow
+from wealth_asset_window import WealthAssetWindow
 from services.mutual_fund_service import get_mutual_fund_summary
 from services.dividend_yield_service import get_dividend_dashboard_summary
 from services.currency_service import (
@@ -87,6 +88,7 @@ class MainWindow(QMainWindow):
         self.dividend_window = None
         self.dividend_charts_window = None
         self.dividend_yield_window = None
+        self.wealth_asset_window = None
 
         self.init_ui()
         self.apply_theme()
@@ -194,6 +196,7 @@ class MainWindow(QMainWindow):
             ("💰 Dividends", self.open_dividends),
             ("📊 Dividend Charts", self.open_dividend_charts),
             ("💸 Dividend Yield", self.open_dividend_yield),
+            ("🏦 Wealth Assets", self.open_wealth_assets),
             ("📄 Excel / PDF Report", self.generate_reports),
             ("💾 Backup", self.backup_database),
             ("♻ Restore", self.restore_database),
@@ -1209,6 +1212,25 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Dividend Yield Error",
+                str(e)
+            )
+
+
+    def open_wealth_assets(self):
+
+        try:
+            self.wealth_asset_window = WealthAssetWindow(self)
+            self.wealth_asset_window.show()
+
+            self.statusBar().showMessage(
+                "PF, Pension & Bank Cash Manager opened."
+            )
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Wealth Assets Error",
                 str(e)
             )
 
