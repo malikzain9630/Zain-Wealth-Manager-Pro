@@ -43,6 +43,7 @@ from dividend_charts_window import DividendChartsWindow
 from dividend_yield_window import DividendYieldWindow
 from wealth_asset_window import WealthAssetWindow
 from wealth_projection_window import WealthProjectionWindow
+from smart_import_window import SmartImportWindow
 from services.mutual_fund_service import get_mutual_fund_summary
 from services.dividend_yield_service import get_dividend_dashboard_summary
 from services.wealth_asset_service import get_phase10_dashboard_summary
@@ -93,6 +94,7 @@ class MainWindow(QMainWindow):
         self.dividend_yield_window = None
         self.wealth_asset_window = None
         self.wealth_projection_window = None
+        self.smart_import_window = None
 
         self.init_ui()
         self.apply_theme()
@@ -210,6 +212,7 @@ class MainWindow(QMainWindow):
             ("🗑 Delete Holding", self.delete_selected_holding),
             ("🔄 Refresh", self.load_portfolio),
             ("📂 Import Portfolio", self.import_portfolio),
+            ("📥 Smart Import", self.open_smart_import),
             ("📈 Update Prices CSV", self.update_prices),
             ("✍ Manual Price Update", self.manual_price_update),
             ("🏦 Mutual Funds", self.open_mutual_funds),
@@ -1318,6 +1321,28 @@ class MainWindow(QMainWindow):
                 str(e)
             )
 
+
+
+    def open_smart_import(self):
+
+        try:
+            self.smart_import_window = SmartImportWindow()
+            self.show_module_page(
+                self.smart_import_window,
+                "📥 Smart Portfolio Import"
+            )
+
+            self.statusBar().showMessage(
+                "Smart Portfolio Import opened."
+            )
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Smart Import Error",
+                str(e)
+            )
 
     def open_mutual_funds(self):
 
