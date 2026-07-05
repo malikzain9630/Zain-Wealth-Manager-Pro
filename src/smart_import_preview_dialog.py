@@ -196,11 +196,12 @@ class SmartImportPreviewDialog(QDialog):
     def create_table(self):
 
         table = QTableWidget()
-        table.setColumnCount(10)
+        table.setColumnCount(11)
 
         table.setHorizontalHeaderLabels([
             "Import?",
             "Symbol",
+            "Share Name",
             "Shares",
             "Avg Price",
             "Current Price",
@@ -243,6 +244,7 @@ class SmartImportPreviewDialog(QDialog):
 
             values = [
                 row_data.get("symbol", ""),
+                row_data.get("share_name", ""),
                 row_data.get("shares", 0),
                 row_data.get("avg_price", 0),
                 row_data.get("current_price", 0),
@@ -258,14 +260,14 @@ class SmartImportPreviewDialog(QDialog):
                 item = QTableWidgetItem(str(value))
                 item.setTextAlignment(Qt.AlignCenter)
 
-                if col_offset in [5, 6]:
+                if col_offset in [6, 7]:
                     item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-                elif col_offset == 7:
+                elif col_offset == 8:
                     item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 else:
                     item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable)
 
-                if col_offset == 7:
+                if col_offset == 8:
                     self.apply_confidence_color(item, value)
 
                 self.table.setItem(row_index, col_offset, item)
@@ -277,7 +279,7 @@ class SmartImportPreviewDialog(QDialog):
 
     def table_item_changed(self, item):
 
-        if item.column() in [1, 2, 3, 4]:
+        if item.column() in [1, 3, 4, 5]:
             self.update_row_calculated_values(item.row())
 
         self.update_summary_cards()
@@ -290,15 +292,15 @@ class SmartImportPreviewDialog(QDialog):
     def update_row_calculated_values(self, row):
 
         symbol = self.get_cell_text(row, 1)
-        shares = parse_number(self.get_cell_text(row, 2))
-        avg_price = parse_number(self.get_cell_text(row, 3))
-        current_price = parse_number(self.get_cell_text(row, 4))
+        shares = parse_number(self.get_cell_text(row, 3))
+        avg_price = parse_number(self.get_cell_text(row, 4))
+        current_price = parse_number(self.get_cell_text(row, 5))
 
         investment_value = shares * avg_price
         current_value = shares * current_price
 
-        self.set_readonly_cell(row, 5, f"{investment_value:.2f}")
-        self.set_readonly_cell(row, 6, f"{current_value:.2f}")
+        self.set_readonly_cell(row, 6, f"{investment_value:.2f}")
+        self.set_readonly_cell(row, 7, f"{current_value:.2f}")
 
         confidence = self.calculate_row_confidence(
             symbol,
@@ -311,7 +313,7 @@ class SmartImportPreviewDialog(QDialog):
         confidence_item.setTextAlignment(Qt.AlignCenter)
         confidence_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
         self.apply_confidence_color(confidence_item, confidence)
-        self.table.setItem(row, 7, confidence_item)
+        self.table.setItem(row, 8, confidence_item)
 
     def set_readonly_cell(self, row, column, text):
 
@@ -411,9 +413,10 @@ class SmartImportPreviewDialog(QDialog):
                 continue
 
             symbol = normalize_symbol(self.get_cell_text(row, 1))
-            shares = parse_number(self.get_cell_text(row, 2))
-            avg_price = parse_number(self.get_cell_text(row, 3))
-            current_price = parse_number(self.get_cell_text(row, 4))
+            share_name = self.get_cell_text(row, 2)
+            shares = parse_number(self.get_cell_text(row, 3))
+            avg_price = parse_number(self.get_cell_text(row, 4))
+            current_price = parse_number(self.get_cell_text(row, 5))
 
             investment_value = shares * avg_price
             current_value = shares * current_price
@@ -425,7 +428,7 @@ class SmartImportPreviewDialog(QDialog):
                 current_price
             )
 
-            remarks = self.get_cell_text(row, 9)
+            remarks = self.get_cell_text(row, 10)
 
             if validate:
 
@@ -451,13 +454,14 @@ class SmartImportPreviewDialog(QDialog):
 
             selected_rows.append({
                 "symbol": symbol,
+                "share_name": share_name,
                 "shares": round(shares, 4),
                 "avg_price": round(avg_price, 4),
                 "current_price": round(current_price, 4),
                 "investment_value": round(investment_value, 2),
                 "current_value": round(current_value, 2),
                 "confidence": confidence,
-                "source": self.get_cell_text(row, 8),
+                "source": self.get_cell_text(row, 9),
                 "remarks": remarks,
             })
 
@@ -488,9 +492,10 @@ class SmartImportPreviewDialog(QDialog):
         for row in range(self.table.rowCount()):
 
             symbol = self.get_cell_text(row, 1)
-            shares = parse_number(self.get_cell_text(row, 2))
-            avg_price = parse_number(self.get_cell_text(row, 3))
-            current_price = parse_number(self.get_cell_text(row, 4))
+            share_name = self.get_cell_text(row, 2)
+            shares = parse_number(self.get_cell_text(row, 3))
+            avg_price = parse_number(self.get_cell_text(row, 4))
+            current_price = parse_number(self.get_cell_text(row, 5))
 
             confidence = self.calculate_row_confidence(
                 symbol,

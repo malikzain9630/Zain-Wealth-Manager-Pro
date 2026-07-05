@@ -29,6 +29,8 @@ import re
 from pathlib import Path
 
 
+SMART_IMPORT_SERVICE_VERSION = "PSX_STATEMENT_V3_JS_INVESTPRO"
+
 SUPPORTED_EXTENSIONS = [
     ".csv",
     ".xlsx",
@@ -141,7 +143,193 @@ COMMON_WORDS_TO_IGNORE = {
     "security",
     "share",
     "company",
+    "broker",
+    "cdc",
+    "nccpl",
+    "js",
+    "global",
+    "whatsapp",
+    "image",
+    "generated",
+    "page",
+    "report",
+    "from",
+    "to",
+    "debit",
+    "credit",
+    "opening",
+    "closing",
+    "cash",
+    "ledger",
+    "exchange",
+    "karachi",
+    "limited",
+    "ltd",
+    "and",
+    "the",
+    "for",
+    "with",
+    "this",
+    "that",
+    "your",
+    "ours",
+    "at",
+    "am",
+    "pm",
+    "jan",
+    "feb",
+    "mar",
+    "apr",
+    "may",
+    "jun",
+    "jul",
+    "aug",
+    "sep",
+    "oct",
+    "nov",
+    "dec",
+    "house", "mohalla", "colony", "jhang", "pakistan", "near", "cycle", "mor", "road", "street", "city", "customer", "id", "portfolio", "registered", "dispatch", "applicable", "balance", "summary", "funds", "type", "units", "nav", "inflows", "outflows", "purchase", "redemption", "recd", "raast", "opening", "net", "charges", "tax", "load",
 }
+
+
+PORTFOLIO_HEADER_KEYWORDS = [
+    "symbol",
+    "scrip",
+    "ticker",
+    "stock",
+    "security",
+    "qty",
+    "quantity",
+    "shares",
+    "holding",
+    "avg",
+    "average",
+    "cost",
+    "rate",
+    "current",
+    "market",
+    "price",
+    "ltp",
+]
+
+PORTFOLIO_STOP_KEYWORDS = [
+    "total",
+    "grand total",
+    "summary",
+    "cash balance",
+    "ledger",
+    "dividend",
+    "note",
+    "disclaimer",
+    "page",
+    "generated",
+    "client detail",
+    "account detail",
+]
+
+NOISE_LINE_KEYWORDS = [
+    "whatsapp",
+    "image",
+    "generated on",
+    "client",
+    "account",
+    "statement",
+    "portfolio value",
+    "total portfolio",
+    "cash balance",
+    "ledger",
+    "disclaimer",
+    "page",
+    "date",
+    "from",
+    "to",
+    "phone",
+    "email",
+    "address",
+]
+
+
+# Common PSX symbols help OCR/PDF parser avoid random words.
+# Unknown symbols can still be accepted when they appear inside a detected portfolio table.
+COMMON_PSX_SYMBOLS = {
+    "AABS", "ABOT", "ACPL", "ADMM", "AGHA", "AGIL", "AGP", "AICL", "AIRLINK",
+    "AKBL", "ALAC", "ALTN", "ANL", "APL", "ARPL", "ASC", "ATLH", "ATRL",
+    "AVN", "BAFL", "BAHL", "BATA", "BIPL", "BNWM", "BOP", "BWCL", "CEPB",
+    "CHCC", "CNERGY", "COLG", "CPHL", "CSAP", "DAWH", "DGKC", "DCR",
+    "EFERT", "EFUG", "ENGRO", "ENGROH", "EPCL", "FABL", "FATIMA", "FCCL",
+    "FCEPL", "FFBL", "FFC", "FHAM", "FML", "GAL", "GATM", "GHGL", "GLAXO",
+    "GLXO", "HBL", "HCAR", "HINOON", "HMB", "HUBC", "IBFL", "ILP", "INIL",
+    "ISL", "JVDC", "KAPCO", "KEL", "KOHC", "KOHE", "LOTCHEM", "LUCK",
+    "MARI", "MCB", "MEBL", "MLCF", "MTL", "MUGHAL", "NATF", "NBP", "NCL",
+    "NML", "OGDC", "PAEL", "PAKT", "PABC", "PIOC", "POL", "PPL", "PSO",
+    "PSX", "PTC", "SAZEW", "SEARL", "SHEL", "SHFA", "SNGP", "SSGC", "SYS",
+    "TGL", "THALL", "TPLP", "TRG", "UBL", "UNITY", "WAVES", "YOUW",
+}
+
+
+PSX_SYMBOL_NAMES = {
+    "ENGRO": "Engro Corporation Limited",
+    "ENGROH": "Engro Holdings Limited",
+    "FFC": "Fauji Fertilizer Company Limited",
+    "FFBL": "Fauji Fertilizer Bin Qasim Limited",
+    "HUBC": "Hub Power Company Limited",
+    "LUCK": "Lucky Cement Limited",
+    "MARI": "Mari Energies Limited",
+    "MEBL": "Meezan Bank Limited",
+    "SYS": "Systems Limited",
+    "SSGC": "Sui Southern Gas Company Limited",
+    "SNGP": "Sui Northern Gas Pipelines Limited",
+    "OGDC": "Oil & Gas Development Company Limited",
+    "PPL": "Pakistan Petroleum Limited",
+    "PSO": "Pakistan State Oil Company Limited",
+    "UBL": "United Bank Limited",
+    "HBL": "Habib Bank Limited",
+    "MCB": "MCB Bank Limited",
+    "BAFL": "Bank Alfalah Limited",
+    "BAHL": "Bank AL Habib Limited",
+    "MTL": "Millat Tractors Limited",
+    "MLCF": "Maple Leaf Cement Factory Limited",
+    "DGKC": "D.G. Khan Cement Company Limited",
+    "FCCL": "Fauji Cement Company Limited",
+    "KOHC": "Kohat Cement Company Limited",
+    "TRG": "TRG Pakistan Limited",
+    "AIRLINK": "Air Link Communication Limited",
+}
+
+
+BROKER_NAME_KEYWORDS = [
+    "js global",
+    "cdc",
+    "nccpl",
+    "akd",
+    "topline",
+    "bma",
+    "foundation securities",
+    "arif habib",
+    "alfalah securities",
+    "broker",
+    "account",
+    "client",
+]
+
+BROKER_PORTFOLIO_KEYWORDS = [
+    "portfolio",
+    "holding",
+    "holdings",
+    "custody",
+    "shares",
+    "quantity",
+    "symbol",
+    "scrip",
+    "security",
+    "market value",
+    "current price",
+    "average price",
+    "avg price",
+    "cost price",
+]
+
+
 
 
 def read_portfolio_file(file_path):
@@ -186,6 +374,8 @@ def read_portfolio_file(file_path):
 
     try:
 
+        result["warnings"].append(f"Smart Import Service: {SMART_IMPORT_SERVICE_VERSION}")
+
         if extension == ".csv":
             rows = read_csv_file(path)
             result["rows"] = extract_holdings_from_rows(rows)
@@ -197,6 +387,11 @@ def read_portfolio_file(file_path):
         elif extension == ".pdf":
             text = extract_text_from_pdf(path)
             result["raw_text"] = text
+
+            mixed_warning = detect_mixed_statement_warning(text)
+            if mixed_warning:
+                result["warnings"].append(mixed_warning)
+
             result["rows"] = extract_holdings_from_text(text)
 
         elif extension in [".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"]:
@@ -219,6 +414,44 @@ def read_portfolio_file(file_path):
         result["errors"].append(str(e))
 
     return result
+
+
+def detect_mixed_statement_warning(text):
+    """
+    Return warning when PDF contains non-PSX statements.
+
+    Current Smart Portfolio Import imports PSX holdings only.
+    Mutual Funds/MTPF statements should be handled by a separate importer.
+    """
+
+    lowered = str(text or "").lower()
+
+    has_al_meezan = (
+        "al meezan investment management" in lowered
+        or "meezan islamic fund" in lowered
+        or "kse meezan index fund" in lowered
+        or "mtpf" in lowered
+    )
+
+    has_psx_trades = "t+1 buy" in lowered or "t+1 sell" in lowered
+
+    if has_al_meezan and has_psx_trades:
+        return (
+            "Mixed statement detected: PSX transactions plus Al Meezan "
+            "Mutual Funds/MTPF pages. Smart Portfolio Import will import PSX "
+            "holdings only. Mutual Fund/MTPF pages should be imported through "
+            "a separate Mutual Fund/MTPF importer."
+        )
+
+    if has_al_meezan and not has_psx_trades:
+        return (
+            "Al Meezan Mutual Funds/MTPF statement detected. "
+            "This file is not a PSX stock portfolio statement. "
+            "Use Mutual Fund/MTPF importer when available."
+        )
+
+    return ""
+
 
 
 def read_csv_file(path):
@@ -814,22 +1047,80 @@ def find_best_header(headers, candidates):
 
 def extract_holdings_from_text(text):
     """
-    Extract holdings from PDF/image raw text using pattern matching.
+    Extract holdings from PDF/image raw text.
 
-    Supports lines like:
-    ENGROH Engro Holdings Limited 25 170 186
-    FFC Fauji Fertilizer Company Limited 50 390 432
+    Priority:
+    1. Broker account transaction statement:
+       T+1 Buy/Sell SYMBOL Qty @ Price
+    2. Broker/portfolio table exact extractor.
+    3. Focused table extractor.
+    4. Common PSX symbol fallback for screenshots.
     """
 
     if not text:
         return []
 
+    lines = get_clean_text_lines(text)
+
+    # JS InvestPro mobile screenshots show:
+    # SYMBOL current_price
+    # qty shares @ avg_price
+    js_investpro_rows = extract_js_investpro_screenshot_rows(lines)
+
+    if js_investpro_rows:
+        return js_investpro_rows
+
+    # Transaction ledger statements do not have a current holdings table.
+    # Build net holdings from Buy/Sell transactions across all extracted pages.
+    transaction_rows = extract_broker_transaction_statement_rows(lines)
+
+    if transaction_rows:
+        return transaction_rows
+
+    exact_rows = extract_broker_exact_rows(lines)
+
+    if exact_rows:
+        return exact_rows
+
     rows = []
-    lines = build_candidate_lines(text)
+
+    table_lines = extract_portfolio_table_lines(lines)
+
+    if table_lines:
+        candidate_lines = table_lines
+    else:
+        candidate_lines = build_strict_candidate_lines(lines)
+
+    for line in candidate_lines:
+
+        parsed = parse_holding_line(line)
+
+        if parsed:
+            rows.append(parsed)
+
+    if rows:
+        return dedupe_exact_rows(rows)
+
+    # Last fallback for JPG/PNG screenshots where OCR table headers are weak.
+    loose_rows = extract_common_symbol_screenshot_rows(lines)
+
+    return dedupe_exact_rows(loose_rows)
+
+
+def extract_common_symbol_screenshot_rows(lines):
+    """
+    Fallback for screenshots where OCR does not preserve headers.
+
+    It only accepts rows containing a known PSX symbol and at least 3 numeric
+    values after that symbol. This prevents random words like HOUSE from being
+    imported.
+    """
+
+    rows = []
 
     for line in lines:
 
-        parsed = parse_holding_line(line)
+        parsed = parse_common_symbol_screenshot_line(line)
 
         if parsed:
             rows.append(parsed)
@@ -837,68 +1128,21 @@ def extract_holdings_from_text(text):
     return rows
 
 
-def build_candidate_lines(text):
+def parse_common_symbol_screenshot_line(line):
     """
-    Build possible row lines from PDF text.
+    Parse screenshot line by known PSX symbol.
 
-    Some PDF extractors return a clean line per row.
-    Others split table cells line-by-line. This function preserves
-    line parsing first and also creates joined chunks as fallback.
-    """
-
-    raw_lines = [
-        str(line or "").strip()
-        for line in str(text or "").splitlines()
-        if str(line or "").strip()
-    ]
-
-    candidate_lines = list(raw_lines)
-
-    # Fallback: combine nearby lines to catch split PDF rows.
-    for i in range(len(raw_lines)):
-        chunk = " ".join(raw_lines[i:i + 5])
-        if chunk:
-            candidate_lines.append(chunk)
-
-    # Another fallback: each symbol onwards until enough numbers.
-    symbols = []
-
-    for index, line in enumerate(raw_lines):
-        token = line.split()[0] if line.split() else ""
-        token = normalize_symbol(token)
-
-        if is_valid_symbol(token):
-            symbols.append(index)
-
-    for index in symbols:
-        chunk = " ".join(raw_lines[index:index + 6])
-        candidate_lines.append(chunk)
-
-    return candidate_lines
-
-
-def parse_holding_line(line):
-    """
-    Parse one possible portfolio holding line.
+    Examples:
+    FFC Fauji Fertilizer Company Limited 37 556.95 556.95
+    MEBL 34 490.88 490.88
     """
 
-    original_line = str(line or "").strip()
+    line = clean_ocr_line(line)
 
-    if not original_line:
+    if not line:
         return None
 
-    line = original_line.replace(",", "")
-
-    lowered = line.lower()
-
-    ignore_terms = [
-        "symbol share name shares avg price current price",
-        "sample psx portfolio",
-        "columns include",
-        "portfolio import",
-    ]
-
-    if any(term in lowered for term in ignore_terms):
+    if is_noise_line(line):
         return None
 
     tokens = line.split()
@@ -908,35 +1152,1086 @@ def parse_holding_line(line):
 
     symbol = ""
 
-    for token in tokens[:5]:
+    for token in tokens[:6]:
+
         possible = normalize_symbol(token)
 
-        if is_valid_symbol(possible):
+        if possible in COMMON_PSX_SYMBOLS:
             symbol = possible
             break
 
     if not symbol:
         return None
 
+    numbers = extract_numbers_from_text_after_symbol(line, symbol)
+
+    if len(numbers) < 3:
+        return None
+
+    # For screenshots, the first 3 useful numbers after symbol are usually:
+    # shares, avg/current price, current/market price.
+    shares = numbers[0]
+    avg_price = numbers[1]
+    current_price = numbers[2]
+
+    if shares <= 0 or avg_price <= 0 or current_price <= 0:
+        return None
+
+    if shares > 100000000:
+        return None
+
+    share_name = extract_share_name_from_line(line, symbol)
+
+    confidence = calculate_confidence(symbol, shares, avg_price, current_price)
+
+    if share_name:
+        confidence += 5
+
+    if confidence > 100:
+        confidence = 100
+
+    return {
+        "symbol": symbol,
+        "share_name": share_name or PSX_SYMBOL_NAMES.get(symbol, ""),
+        "shares": round(shares, 4),
+        "avg_price": round(avg_price, 4),
+        "current_price": round(current_price, 4),
+        "investment_value": round(shares * avg_price, 2),
+        "current_value": round(shares * current_price, 2),
+        "source": "Image/PDF Screenshot Fallback",
+        "confidence": confidence,
+        "remarks": "Fallback extraction. Please verify row before importing.",
+    }
+
+
+def extract_js_investpro_screenshot_rows(lines):
+    """
+    Extract holdings from JS InvestPro mobile app screenshots.
+
+    Common OCR format:
+    LUCK 470.80
+    16 shares @ 437.61
+    Investment Value Current Value
+    PKR 7,001.76 PKR 7,532.80
+
+    MARI 673.60
+    48 shares @ 661.36
+    """
+
+    if not lines:
+        return []
+
+    joined = " ".join(lines).lower()
+
+    # Only activate this parser for mobile portfolio/watchlist screenshots.
+    if (
+        "investpro" not in joined
+        and "watchlist" not in joined
+        and "shares @" not in joined
+        and "investment value current value" not in joined
+    ):
+        return []
+
+    rows = []
+
+    for index, line in enumerate(lines):
+
+        symbol_info = parse_js_symbol_current_price_line(line)
+
+        if not symbol_info:
+            continue
+
+        symbol = symbol_info["symbol"]
+        current_price = symbol_info["current_price"]
+
+        share_info = find_js_shares_avg_price(lines, index + 1, max_lookahead=5)
+
+        if not share_info:
+            continue
+
+        shares = share_info["shares"]
+        avg_price = share_info["avg_price"]
+
+        # Try to read investment/current value from nearby lines.
+        values = find_js_investment_current_values(lines, index, max_lookahead=14)
+
+        investment_value = shares * avg_price
+        current_value = shares * current_price
+
+        if values:
+            investment_value = values.get("investment_value", investment_value)
+            current_value = values.get("current_value", current_value)
+
+            if shares > 0 and current_value > 0:
+                derived_current_price = current_value / shares
+
+                if derived_current_price > 0:
+                    current_price = derived_current_price
+
+        rows.append({
+            "symbol": symbol,
+            "share_name": PSX_SYMBOL_NAMES.get(symbol, ""),
+            "shares": round(shares, 4),
+            "avg_price": round(avg_price, 4),
+            "current_price": round(current_price, 4),
+            "investment_value": round(shares * avg_price, 2),
+            "current_value": round(shares * current_price, 2),
+            "source": "JS InvestPro Screenshot",
+            "confidence": 96,
+            "remarks": "Extracted from JS InvestPro screenshot. Please verify before importing.",
+        })
+
+    return dedupe_exact_rows(rows)
+
+
+def parse_js_symbol_current_price_line(line):
+    """
+    Parse line containing symbol and current price.
+
+    Examples:
+    ry LUCK 470.80
+    6 MARI 673.60
+    em SYS 148.66
+    """
+
+    line = clean_ocr_line(line)
+
+    if not line:
+        return None
+
+    if is_noise_line(line):
+        return None
+
+    tokens = line.split()
+
+    if len(tokens) < 2:
+        return None
+
+    for pos, token in enumerate(tokens[:6]):
+
+        symbol = normalize_symbol(token)
+
+        if symbol not in COMMON_PSX_SYMBOLS:
+            continue
+
+        numbers_after = extract_numbers_from_tokens(tokens[pos + 1:])
+
+        if not numbers_after:
+            continue
+
+        current_price = numbers_after[0]
+
+        if current_price <= 0:
+            continue
+
+        # Reject impossible current price from index/volume lines.
+        if current_price > 100000:
+            continue
+
+        return {
+            "symbol": symbol,
+            "current_price": current_price,
+        }
+
+    return None
+
+
+def find_js_shares_avg_price(lines, start_index, max_lookahead=5):
+    """
+    Find 'N shares @ price' line after symbol line.
+    """
+
+    end_index = min(len(lines), start_index + max_lookahead)
+
+    pattern = re.compile(
+        r"([0-9,]+(?:\.[0-9]+)?)\s+shares?\s*@\s*([0-9,]+(?:\.[0-9]+)?)",
+        re.IGNORECASE
+    )
+
+    for index in range(start_index, end_index):
+
+        line = clean_ocr_line(lines[index])
+        match = pattern.search(line)
+
+        if not match:
+            continue
+
+        shares = parse_number(match.group(1))
+        avg_price = parse_number(match.group(2))
+
+        if shares > 0 and avg_price > 0:
+            return {
+                "shares": shares,
+                "avg_price": avg_price,
+            }
+
+    return None
+
+
+def find_js_investment_current_values(lines, start_index, max_lookahead=14):
+    """
+    Find Investment Value / Current Value numbers near the holding block.
+    """
+
+    end_index = min(len(lines), start_index + max_lookahead)
+
+    for index in range(start_index, end_index):
+
+        line = clean_ocr_line(lines[index]).lower()
+
+        if "investment value" not in line or "current value" not in line:
+            continue
+
+        # Usually values are on the next line.
+        for value_index in range(index + 1, min(len(lines), index + 4)):
+
+            value_line = clean_ocr_line(lines[value_index])
+            numbers = extract_all_numbers_from_text(value_line)
+
+            if len(numbers) >= 2:
+                return {
+                    "investment_value": numbers[0],
+                    "current_value": numbers[1],
+                }
+
+    return None
+
+
+def extract_all_numbers_from_text(text):
+    """
+    Extract all numbers from a text line.
+    """
+
+    text = str(text or "")
+    text = text.replace(",", "")
+    text = text.replace("PKR", "")
+    text = text.replace("pkr", "")
+    text = text.replace("pxr", "")
+    text = text.replace("pwr", "")
+    text = text.replace("par", "")
+    text = text.replace("per", "")
+
+    matches = re.findall(r"-?\d+(?:\.\d+)?", text)
+
     numbers = []
+
+    for match in matches:
+        try:
+            numbers.append(float(match))
+        except Exception:
+            pass
+
+    return numbers
+
+
+def extract_broker_transaction_statement_rows(lines):
+    """
+    Extract net PSX holdings from broker account statement transactions.
+
+    Handles lines like:
+    May 20,2026 T+1 Buy MEBL 1 @ 463.96000000 Comm Amt ...
+    Jun 02,2026 T+1 Sell SSGC 1 @ 27.30000000 Comm Amt ...
+
+    Output:
+    - Net shares
+    - Weighted average buy price
+    - Current price estimated from latest transaction price
+    """
+
+    trades = []
+
+    for line in lines:
+        trade = parse_broker_trade_line(line)
+
+        if trade:
+            trades.append(trade)
+
+    if not trades:
+        return []
+
+    positions = {}
+
+    for trade in trades:
+
+        symbol = trade["symbol"]
+        side = trade["side"]
+        quantity = trade["quantity"]
+        price = trade["price"]
+
+        if symbol not in positions:
+            positions[symbol] = {
+                "shares": 0.0,
+                "cost": 0.0,
+                "last_price": 0.0,
+                "buy_count": 0,
+                "sell_count": 0,
+            }
+
+        position = positions[symbol]
+
+        if side == "BUY":
+            position["shares"] += quantity
+            position["cost"] += quantity * price
+            position["last_price"] = price
+            position["buy_count"] += 1
+
+        elif side == "SELL":
+
+            if position["shares"] > 0:
+                average_cost = position["cost"] / position["shares"]
+
+                sell_quantity = quantity
+
+                if sell_quantity > position["shares"]:
+                    sell_quantity = position["shares"]
+
+                position["shares"] -= sell_quantity
+                position["cost"] -= average_cost * sell_quantity
+
+                if position["shares"] < 0:
+                    position["shares"] = 0
+
+                if position["cost"] < 0:
+                    position["cost"] = 0
+
+            position["last_price"] = price
+            position["sell_count"] += 1
+
+    rows = []
+
+    for symbol, position in positions.items():
+
+        shares = position["shares"]
+
+        if shares <= 0:
+            continue
+
+        if shares < 0.0001:
+            continue
+
+        if position["cost"] > 0:
+            avg_price = position["cost"] / shares
+        else:
+            avg_price = position["last_price"]
+
+        current_price = position["last_price"] or avg_price
+
+        rows.append({
+            "symbol": symbol,
+            "share_name": PSX_SYMBOL_NAMES.get(symbol, ""),
+            "shares": round(shares, 4),
+            "avg_price": round(avg_price, 4),
+            "current_price": round(current_price, 4),
+            "investment_value": round(shares * avg_price, 2),
+            "current_value": round(shares * current_price, 2),
+            "source": "Broker Transaction Statement",
+            "confidence": 95,
+            "remarks": (
+                "Calculated from Buy/Sell transaction statement. "
+                "Current price is estimated from latest transaction price; "
+                "please update current market price if needed."
+            ),
+        })
+
+    rows.sort(key=lambda item: item["symbol"])
+
+    return rows
+
+
+def parse_broker_trade_line(line):
+    """
+    Parse one buy/sell transaction line.
+    """
+
+    line = clean_ocr_line(line)
+
+    if not line:
+        return None
+
+    pattern = re.compile(
+        r"T\s*\+\s*1\s+"
+        r"(Buy|Sell)\s+"
+        r"([A-Z0-9]+)\s+"
+        r"([0-9,]+(?:\.[0-9]+)?)\s+"
+        r"@\s*"
+        r"([0-9,]+(?:\.[0-9]+)?)",
+        re.IGNORECASE
+    )
+
+    match = pattern.search(line)
+
+    if not match:
+        return None
+
+    side = match.group(1).strip().upper()
+    symbol = normalize_symbol(match.group(2))
+    quantity = parse_number(match.group(3))
+    price = parse_number(match.group(4))
+
+    if not is_valid_symbol(symbol):
+        return None
+
+    if quantity <= 0 or price <= 0:
+        return None
+
+    if symbol not in COMMON_PSX_SYMBOLS:
+        # Trade statements are strict; avoid false OCR symbols.
+        return None
+
+    return {
+        "side": side,
+        "symbol": symbol,
+        "quantity": quantity,
+        "price": price,
+    }
+
+
+def extract_broker_exact_rows(lines):
+    """
+    Extract portfolio rows with broker-style table detection.
+
+    This is stricter than generic OCR parsing:
+    - finds a holdings/portfolio table area
+    - accepts rows that start with a likely PSX symbol
+    - uses first 3 numeric columns as Shares, Avg Price, Current Price
+    """
+
+    if not lines:
+        return []
+
+    table_blocks = find_broker_portfolio_blocks(lines)
+    rows = []
+
+    for block in table_blocks:
+
+        for line in block:
+            parsed = parse_broker_exact_row(line, inside_table=True)
+
+            if parsed:
+                rows.append(parsed)
+
+    if rows:
+        return dedupe_exact_rows(rows)
+
+    # Very strict fallback for clean screenshots/PDFs without a detectable header.
+    for line in lines:
+        parsed = parse_broker_exact_row(line, inside_table=False)
+
+        if parsed:
+            rows.append(parsed)
+
+    return dedupe_exact_rows(rows)
+
+
+def find_broker_portfolio_blocks(lines):
+    """
+    Find blocks likely containing portfolio holdings table.
+    """
+
+    blocks = []
+    current_block = []
+    in_block = False
+    non_row_count = 0
+
+    for index, line in enumerate(lines):
+
+        lowered = line.lower()
+
+        if is_broker_portfolio_header(line):
+            in_block = True
+            current_block = []
+            non_row_count = 0
+            continue
+
+        if not in_block:
+            continue
+
+        if is_portfolio_block_stop(line):
+
+            if current_block:
+                blocks.append(current_block)
+
+            in_block = False
+            current_block = []
+            non_row_count = 0
+            continue
+
+        if looks_like_broker_exact_row(line):
+            current_block.append(line)
+            non_row_count = 0
+        else:
+            non_row_count += 1
+
+        # Stop block if several non-row lines appear after holdings started.
+        if current_block and non_row_count >= 4:
+            blocks.append(current_block)
+            in_block = False
+            current_block = []
+            non_row_count = 0
+
+    if current_block:
+        blocks.append(current_block)
+
+    return blocks
+
+
+def is_broker_portfolio_header(line):
+    """
+    Detect table header for holdings/portfolio.
+    """
+
+    lowered = clean_ocr_line(line).lower()
+
+    if not lowered:
+        return False
+
+    score = 0
+
+    for keyword in BROKER_PORTFOLIO_KEYWORDS:
+        if keyword in lowered:
+            score += 1
+
+    has_symbol = any(word in lowered for word in ["symbol", "scrip", "security", "stock"])
+    has_qty = any(word in lowered for word in ["qty", "quantity", "shares", "holding", "holdings"])
+    has_price = any(word in lowered for word in ["price", "rate", "ltp", "market", "avg", "average", "cost"])
+
+    if has_symbol and has_qty and has_price:
+        score += 5
+
+    return score >= 5
+
+
+def is_portfolio_block_stop(line):
+    """
+    Detect where a portfolio table likely ends.
+    """
+
+    lowered = clean_ocr_line(line).lower()
+
+    stop_phrases = [
+        "grand total",
+        "portfolio total",
+        "total value",
+        "cash balance",
+        "ledger",
+        "transaction",
+        "dividend",
+        "capital gain",
+        "disclaimer",
+        "note:",
+        "page ",
+        "generated",
+        "signature",
+    ]
+
+    return any(phrase in lowered for phrase in stop_phrases)
+
+
+def looks_like_broker_exact_row(line):
+    """
+    Strict check for broker holding row.
+    """
+
+    line = clean_ocr_line(line)
+
+    if not line or is_noise_line(line):
+        return False
+
+    tokens = line.split()
+
+    if len(tokens) < 4:
+        return False
+
+    symbol = normalize_symbol(tokens[0])
+
+    if not is_valid_symbol(symbol):
+        return False
+
+    numbers = extract_numbers_from_text_after_symbol(line, symbol)
+
+    if len(numbers) < 3:
+        return False
+
+    if line_contains_mostly_date_time(line):
+        return False
+
+    return True
+
+
+def parse_broker_exact_row(line, inside_table=False):
+    """
+    Parse broker table row.
+
+    Expected common formats:
+    SYMBOL Company Name Shares AvgPrice CurrentPrice
+    SYMBOL Shares AvgPrice CurrentPrice
+    SYMBOL Company Name Qty CostPrice MarketPrice MarketValue ...
+    """
+
+    line = clean_ocr_line(line)
+
+    if not looks_like_broker_exact_row(line):
+        return None
+
+    tokens = line.split()
+    symbol = normalize_symbol(tokens[0])
+
+    if not inside_table and symbol not in COMMON_PSX_SYMBOLS:
+        # Outside a detected table, avoid random OCR words.
+        return None
+
+    numbers = extract_numbers_from_text_after_symbol(line, symbol)
+
+    if len(numbers) < 3:
+        return None
+
+    # For broker tables, first three numeric values after name are normally:
+    # shares, average/cost price, current/market price.
+    shares = numbers[0]
+    avg_price = numbers[1]
+    current_price = numbers[2]
+
+    if shares <= 0:
+        return None
+
+    if avg_price < 0 or current_price < 0:
+        return None
+
+    if shares > 100000000:
+        return None
+
+    share_name = extract_share_name_from_line(line, symbol)
+
+    confidence = calculate_confidence(symbol, shares, avg_price, current_price)
+
+    if inside_table:
+        confidence += 5
+
+    if share_name:
+        confidence += 5
+
+    if confidence > 100:
+        confidence = 100
+
+    return {
+        "symbol": symbol,
+        "share_name": share_name,
+        "shares": round(shares, 4),
+        "avg_price": round(avg_price, 4),
+        "current_price": round(current_price, 4),
+        "investment_value": round(shares * avg_price, 2),
+        "current_value": round(shares * current_price, 2),
+        "source": "Broker Exact OCR/PDF",
+        "confidence": confidence,
+        "remarks": "Broker-style exact extraction. Please verify before importing.",
+    }
+
+
+def extract_numbers_from_text_after_symbol(line, symbol):
+    """
+    Extract numeric values after symbol.
+    """
+
+    line = clean_ocr_line(line)
+    symbol = normalize_symbol(symbol)
+
+    tokens = line.split()
+
+    after_symbol = []
+    found = False
 
     for token in tokens:
 
+        if not found:
+
+            if normalize_symbol(token) == symbol:
+                found = True
+
+            continue
+
+        after_symbol.append(token)
+
+    return extract_numbers_from_tokens(after_symbol)
+
+
+def dedupe_exact_rows(rows):
+    """
+    Remove duplicate extracted rows.
+    """
+
+    result = []
+    seen = set()
+
+    for row in rows:
+
+        key = (
+            row.get("symbol"),
+            round(parse_number(row.get("shares", 0)), 4),
+            round(parse_number(row.get("avg_price", 0)), 4),
+            round(parse_number(row.get("current_price", 0)), 4),
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        result.append(row)
+
+    return result
+
+
+def get_clean_text_lines(text):
+    """
+    Return cleaned lines from OCR/PDF text.
+    """
+
+    raw_lines = str(text or "").replace("\r", "\n").splitlines()
+
+    lines = []
+
+    for line in raw_lines:
+
+        line = clean_ocr_line(line)
+
+        if not line:
+            continue
+
+        if is_noise_line(line):
+            continue
+
+        lines.append(line)
+
+    return lines
+
+
+def clean_ocr_line(line):
+    """
+    Clean one OCR/PDF text line.
+    """
+
+    line = str(line or "").strip()
+
+    if not line:
+        return ""
+
+    replacements = {
+        "|": " ",
+        "—": "-",
+        "–": "-",
+        "•": " ",
+        "_": " ",
+        "\t": " ",
+    }
+
+    for old, new in replacements.items():
+        line = line.replace(old, new)
+
+    line = re.sub(r"\s+", " ", line)
+    return line.strip()
+
+
+def is_noise_line(line):
+    """
+    Identify obvious non-portfolio text lines.
+    """
+
+    lowered = str(line or "").lower()
+
+    if not lowered:
+        return True
+
+    for keyword in NOISE_LINE_KEYWORDS:
+        if keyword in lowered:
+            return True
+
+    # Ignore standalone dates/times lines.
+    if re.fullmatch(r"[\d\s:/\-.apmAPM]+", line):
+        return True
+
+    return False
+
+
+def extract_portfolio_table_lines(lines):
+    """
+    Extract lines likely belonging to a portfolio holdings table.
+
+    Starts after a header line with symbol/qty/price keywords.
+    Stops when summary/total/noise section begins.
+    """
+
+    if not lines:
+        return []
+
+    header_index = find_portfolio_header_index(lines)
+
+    if header_index is None:
+        return []
+
+    table_lines = []
+
+    for line in lines[header_index + 1:]:
+
+        lowered = line.lower()
+
+        if any(keyword in lowered for keyword in PORTFOLIO_STOP_KEYWORDS):
+            # Keep "total" as stop only after some rows have been collected.
+            if table_lines:
+                break
+
+        if looks_like_portfolio_row(line):
+            table_lines.append(line)
+            continue
+
+        # Allow split OCR rows: combine current line with next few later in fallback.
+        if table_lines and len(table_lines) >= 1:
+            # Stop after table if several non-row lines appear.
+            pass
+
+    # If direct table lines failed, try chunks after header.
+    if not table_lines:
+
+        remaining = lines[header_index + 1:]
+
+        for index in range(len(remaining)):
+            chunk = " ".join(remaining[index:index + 4])
+
+            if looks_like_portfolio_row(chunk):
+                table_lines.append(chunk)
+
+    return table_lines
+
+
+def find_portfolio_header_index(lines):
+    """
+    Find likely portfolio holdings table header.
+    """
+
+    best_index = None
+    best_score = 0
+
+    for index, line in enumerate(lines[:80]):
+
+        lowered = line.lower()
+        score = 0
+
+        for keyword in PORTFOLIO_HEADER_KEYWORDS:
+            if keyword in lowered:
+                score += 1
+
+        has_symbol_word = any(
+            key in lowered
+            for key in ["symbol", "scrip", "ticker", "security", "stock"]
+        )
+
+        has_quantity_word = any(
+            key in lowered
+            for key in ["qty", "quantity", "shares", "holding"]
+        )
+
+        has_price_word = any(
+            key in lowered
+            for key in ["price", "rate", "ltp", "market", "avg", "average"]
+        )
+
+        if has_symbol_word and has_quantity_word and has_price_word:
+            score += 8
+
+        if score > best_score:
+            best_score = score
+            best_index = index
+
+    if best_score >= 8:
+        return best_index
+
+    return None
+
+
+def build_strict_candidate_lines(lines):
+    """
+    Build candidate holding lines without reading every random OCR word.
+
+    Fallback rules are intentionally strict:
+    - Symbol must appear at start/near-start.
+    - Line/chunk must contain at least 3 numeric values.
+    """
+
+    candidate_lines = []
+
+    for line in lines:
+
+        if looks_like_portfolio_row(line):
+            candidate_lines.append(line)
+
+    # Handle split OCR rows by joining nearby lines, but only when first line
+    # begins with a possible stock symbol.
+    for index, line in enumerate(lines):
+
+        first_token = get_first_token(line)
+
+        if not is_valid_symbol(first_token):
+            continue
+
+        chunk = " ".join(lines[index:index + 5])
+
+        if looks_like_portfolio_row(chunk):
+            candidate_lines.append(chunk)
+
+    return candidate_lines
+
+
+def looks_like_portfolio_row(line):
+    """
+    Check whether a line looks like a portfolio holding row.
+
+    Required:
+    - starts with or near-start contains valid stock symbol
+    - at least 3 useful numeric values
+    - not obvious noise/header
+    """
+
+    line = clean_ocr_line(line)
+
+    if not line:
+        return False
+
+    lowered = line.lower()
+
+    if is_noise_line(line):
+        return False
+
+    if any(
+        phrase in lowered
+        for phrase in [
+            "symbol share",
+            "shares avg",
+            "current price",
+            "portfolio import",
+            "sample psx",
+            "columns include",
+        ]
+    ):
+        return False
+
+    tokens = line.split()
+
+    if len(tokens) < 4:
+        return False
+
+    possible_symbol = find_symbol_in_early_tokens(tokens)
+
+    if not possible_symbol:
+        return False
+
+    numbers = extract_numbers_from_tokens(tokens)
+
+    if len(numbers) < 3:
+        return False
+
+    # Avoid reading lines where numbers are date/time fragments only.
+    if line_contains_mostly_date_time(line):
+        return False
+
+    return True
+
+
+def find_symbol_in_early_tokens(tokens):
+    """
+    Find a likely stock symbol in first few tokens.
+    """
+
+    for token in tokens[:3]:
+
+        symbol = normalize_symbol(token)
+
+        if is_valid_symbol(symbol):
+            return symbol
+
+    return ""
+
+
+def extract_numbers_from_tokens(tokens):
+    """
+    Extract positive numeric values from tokens.
+    """
+
+    numbers = []
+
+    for token in tokens:
         number = parse_number(token)
 
         if number > 0:
             numbers.append(number)
 
+    return numbers
+
+
+def line_contains_mostly_date_time(line):
+    """
+    Detect date/time heavy lines to avoid WhatsApp/date false positives.
+    """
+
+    lowered = line.lower()
+
+    if "am" in lowered or "pm" in lowered:
+        return True
+
+    if re.search(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}", lowered):
+        return True
+
+    if re.search(r"\d{1,2}[:.]\d{2}", lowered):
+        return True
+
+    return False
+
+
+def parse_holding_line(line):
+    """
+    Parse one possible portfolio holding line.
+    """
+
+    original_line = clean_ocr_line(line)
+
+    if not original_line:
+        return None
+
+    if not looks_like_portfolio_row(original_line):
+        return None
+
+    line = original_line.replace(",", "")
+    tokens = line.split()
+
+    symbol = find_symbol_in_early_tokens(tokens)
+
+    if not symbol:
+        return None
+
+    if symbol in ["HOUSE", "MOHALLA", "COLONY", "JHANG", "PAKISTAN"]:
+        return None
+
+    if symbol not in COMMON_PSX_SYMBOLS:
+        return None
+
+    numbers = extract_numbers_from_tokens(tokens)
+
     if len(numbers) < 3:
         return None
 
-    # In normal statement row after symbol/name:
-    # last three useful numbers are shares, avg price, current price
+    # For holding rows with company name:
+    # SYMBOL Company Name Shares AvgPrice CurrentPrice
+    # Use last 3 numbers to avoid account/page/date numbers at front.
     shares = numbers[-3]
     avg_price = numbers[-2]
     current_price = numbers[-1]
 
     if shares <= 0:
+        return None
+
+    if avg_price < 0 or current_price < 0:
+        return None
+
+    # Sanity filters: qty normally not absurdly huge for small personal portfolio,
+    # but keep flexible.
+    if shares > 100000000:
         return None
 
     share_name = extract_share_name_from_line(line, symbol)
@@ -950,9 +2245,51 @@ def parse_holding_line(line):
         "investment_value": round(shares * avg_price, 2),
         "current_value": round(shares * current_price, 2),
         "source": "PDF/Image Text",
-        "confidence": calculate_confidence(symbol, shares, avg_price, current_price) - 10,
+        "confidence": calculate_text_row_confidence(
+            symbol,
+            share_name,
+            shares,
+            avg_price,
+            current_price,
+            original_line,
+        ),
         "remarks": "Please verify extracted PDF/image row before importing.",
     }
+
+
+def calculate_text_row_confidence(symbol, share_name, shares, avg_price, current_price, line):
+    """
+    Confidence for PDF/image extracted rows.
+    """
+
+    score = calculate_confidence(symbol, shares, avg_price, current_price) - 10
+
+    if share_name:
+        score += 5
+
+    if looks_like_portfolio_row(line):
+        score += 5
+
+    if score < 0:
+        score = 0
+
+    if score > 100:
+        score = 100
+
+    return score
+
+
+def get_first_token(line):
+    """
+    Return first token from line.
+    """
+
+    tokens = str(line or "").split()
+
+    if not tokens:
+        return ""
+
+    return tokens[0]
 
 
 def extract_share_name_from_line(line, symbol):
@@ -1127,6 +2464,12 @@ def clean_share_name(value):
 def is_valid_symbol(symbol):
     """
     Basic PSX symbol validation.
+
+    This is intentionally stricter for OCR/PDF:
+    - 2 to 10 characters
+    - uppercase alphanumeric
+    - not common English/broker/report word
+    - must contain at least one alphabet
     """
 
     symbol = normalize_symbol(symbol)
@@ -1134,13 +2477,20 @@ def is_valid_symbol(symbol):
     if not symbol:
         return False
 
-    if len(symbol) < 2 or len(symbol) > 12:
+    if len(symbol) < 2 or len(symbol) > 10:
         return False
 
     if not re.match(r"^[A-Z0-9]+$", symbol):
         return False
 
+    if not re.search(r"[A-Z]", symbol):
+        return False
+
     if symbol.lower() in COMMON_WORDS_TO_IGNORE:
+        return False
+
+    # Avoid pure dates/years/numbers.
+    if re.fullmatch(r"\d+", symbol):
         return False
 
     return True
