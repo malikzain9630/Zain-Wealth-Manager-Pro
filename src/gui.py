@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QFrame,
     QFileDialog,
+    QStackedWidget,
 )
 
 from services.report_service import create_reports
@@ -107,7 +108,9 @@ class MainWindow(QMainWindow):
 
         sidebar = self.create_sidebar()
 
+        self.dashboard_widget = QWidget()
         content_layout = QVBoxLayout()
+        self.dashboard_widget.setLayout(content_layout)
 
         heading = QLabel("📊 Portfolio Manager")
         heading.setAlignment(Qt.AlignCenter)
@@ -178,8 +181,11 @@ class MainWindow(QMainWindow):
         content_layout.addLayout(search_layout)
         content_layout.addWidget(self.table)
 
+        self.content_stack = QStackedWidget()
+        self.content_stack.addWidget(self.dashboard_widget)
+
         main_layout.addLayout(sidebar, 1)
-        main_layout.addLayout(content_layout, 5)
+        main_layout.addWidget(self.content_stack, 5)
 
         self.statusBar().showMessage("Ready")
 
@@ -198,7 +204,7 @@ class MainWindow(QMainWindow):
         sidebar.addWidget(title)
 
         buttons = [
-            ("📊 Dashboard", None),
+            ("📊 Dashboard", self.show_dashboard),
             ("➕ Add Holding", self.open_add_dialog),
             ("✏ Edit Holding", self.open_edit_dialog),
             ("🗑 Delete Holding", self.delete_selected_holding),
@@ -299,44 +305,30 @@ class MainWindow(QMainWindow):
 
     def create_dividend_summary_cards(self):
 
-        main_layout = QVBoxLayout()
+        layout = QHBoxLayout()
 
-        first_row = QHBoxLayout()
-        second_row = QHBoxLayout()
-
-        first_row_cards = [
+        cards = [
             ("Total Dividend Received", "dividend_total_received"),
             ("Current Year Dividend", "dividend_current_year"),
             ("Monthly Forecast", "dividend_monthly_forecast"),
-        ]
-
-        second_row_cards = [
             ("Yearly Forecast", "dividend_yearly_forecast"),
             ("Top Dividend Stock", "dividend_top_stock"),
             ("Dividend Records", "dividend_records"),
         ]
 
-        for title, key in first_row_cards:
+        for title, key in cards:
 
             card = self.create_card(title, key)
-            first_row.addWidget(card)
+            layout.addWidget(card)
 
-        for title, key in second_row_cards:
-
-            card = self.create_card(title, key)
-            second_row.addWidget(card)
-
-        main_layout.addLayout(first_row)
-        main_layout.addLayout(second_row)
-
-        return main_layout
+        return layout
 
     def create_card(self, title, key):
 
         card = QFrame()
         card.setObjectName("SummaryCard")
         card.setFrameShape(QFrame.StyledPanel)
-        card.setMinimumHeight(95)
+        card.setMinimumHeight(82)
 
         layout = QVBoxLayout()
         card.setLayout(layout)
@@ -1224,11 +1216,89 @@ class MainWindow(QMainWindow):
                 str(e)
             )
 
+
+    def show_dashboard(self):
+
+        try:
+            self.load_portfolio()
+
+            if hasattr(self, "content_stack") and hasattr(self, "dashboard_widget"):
+                self.content_stack.setCurrentWidget(self.dashboard_widget)
+
+            self.statusBar().showMessage("Dashboard opened.")
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Dashboard Error",
+                str(e)
+            )
+
+    def show_module_page(self, widget, title):
+
+        try:
+            if hasattr(self, "current_module_page") and self.current_module_page:
+                index = self.content_stack.indexOf(self.current_module_page)
+
+                if index >= 0:
+                    old_page = self.content_stack.widget(index)
+                    self.content_stack.removeWidget(old_page)
+                    old_page.deleteLater()
+
+            page = QWidget()
+            page_layout = QVBoxLayout()
+            page.setLayout(page_layout)
+
+            header_layout = QHBoxLayout()
+
+            back_btn = QPushButton("⬅ Dashboard")
+            back_btn.setMinimumHeight(36)
+            back_btn.clicked.connect(self.show_dashboard)
+
+            title_label = QLabel(title)
+            title_label.setAlignment(Qt.AlignCenter)
+            title_label.setStyleSheet("""
+                font-size:20px;
+                font-weight:bold;
+                padding:8px;
+            """)
+
+            header_layout.addWidget(back_btn, 1)
+            header_layout.addWidget(title_label, 5)
+
+            page_layout.addLayout(header_layout)
+            page_layout.addWidget(widget)
+
+            def embedded_close_event(event):
+                event.ignore()
+                self.show_dashboard()
+
+            widget.closeEvent = embedded_close_event
+
+            self.current_module_page = page
+            self.current_module_widget = widget
+
+            self.content_stack.addWidget(page)
+            self.content_stack.setCurrentWidget(page)
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Navigation Error",
+                str(e)
+            )
+
+
     def open_mutual_funds(self):
 
         try:
-            self.mutual_fund_window = MutualFundWindow(self)
-            self.mutual_fund_window.show()
+            self.mutual_fund_window = MutualFundWindow()
+            self.show_module_page(
+                self.mutual_fund_window,
+                "🏦 Mutual Funds Manager"
+            )
 
             self.statusBar().showMessage(
                 "Mutual Funds Manager opened."
@@ -1245,8 +1315,11 @@ class MainWindow(QMainWindow):
     def open_charts(self):
 
         try:
-            self.charts_window = ChartsWindow(self)
-            self.charts_window.show()
+            self.charts_window = ChartsWindow()
+            self.show_module_page(
+                self.charts_window,
+                "📈 Charts & Visual Analytics"
+            )
 
             self.statusBar().showMessage(
                 "Charts & Visual Analytics opened."
@@ -1263,8 +1336,11 @@ class MainWindow(QMainWindow):
     def open_dividends(self):
 
         try:
-            self.dividend_window = DividendWindow(self)
-            self.dividend_window.show()
+            self.dividend_window = DividendWindow()
+            self.show_module_page(
+                self.dividend_window,
+                "💰 Dividend & Income Tracker"
+            )
 
             self.statusBar().showMessage(
                 "Dividend & Income Tracker opened."
@@ -1278,12 +1354,14 @@ class MainWindow(QMainWindow):
                 str(e)
             )
 
-
     def open_dividend_charts(self):
 
         try:
-            self.dividend_charts_window = DividendChartsWindow(self)
-            self.dividend_charts_window.show()
+            self.dividend_charts_window = DividendChartsWindow()
+            self.show_module_page(
+                self.dividend_charts_window,
+                "📊 Dividend Charts"
+            )
 
             self.statusBar().showMessage(
                 "Dividend Charts opened."
@@ -1297,12 +1375,14 @@ class MainWindow(QMainWindow):
                 str(e)
             )
 
-
     def open_dividend_yield(self):
 
         try:
-            self.dividend_yield_window = DividendYieldWindow(self)
-            self.dividend_yield_window.show()
+            self.dividend_yield_window = DividendYieldWindow()
+            self.show_module_page(
+                self.dividend_yield_window,
+                "💸 Dividend Yield & Passive Income Forecast"
+            )
 
             self.statusBar().showMessage(
                 "Dividend Yield & Passive Income Forecast opened."
@@ -1316,13 +1396,14 @@ class MainWindow(QMainWindow):
                 str(e)
             )
 
-
     def open_wealth_assets(self):
 
         try:
-            self.wealth_asset_window = WealthAssetWindow(self)
-            self.wealth_asset_window.destroyed.connect(self.load_portfolio)
-            self.wealth_asset_window.show()
+            self.wealth_asset_window = WealthAssetWindow()
+            self.show_module_page(
+                self.wealth_asset_window,
+                "🏦 PF, Pension & Bank Cash Manager"
+            )
 
             self.statusBar().showMessage(
                 "PF, Pension & Bank Cash Manager opened."
@@ -1336,12 +1417,14 @@ class MainWindow(QMainWindow):
                 str(e)
             )
 
-
     def open_wealth_projection(self):
 
         try:
-            self.wealth_projection_window = WealthProjectionWindow(self)
-            self.wealth_projection_window.show()
+            self.wealth_projection_window = WealthProjectionWindow()
+            self.show_module_page(
+                self.wealth_projection_window,
+                "📈 Wealth Projection / Forecast"
+            )
 
             self.statusBar().showMessage(
                 "Wealth Projection / Forecast opened."
