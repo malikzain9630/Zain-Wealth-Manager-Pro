@@ -24,6 +24,7 @@ Important:
 """
 
 import csv
+import os
 import re
 from pathlib import Path
 
@@ -36,6 +37,9 @@ SUPPORTED_EXTENSIONS = [
     ".png",
     ".jpg",
     ".jpeg",
+    ".bmp",
+    ".tif",
+    ".tiff",
 ]
 
 
@@ -195,7 +199,7 @@ def read_portfolio_file(file_path):
             result["raw_text"] = text
             result["rows"] = extract_holdings_from_text(text)
 
-        elif extension in [".png", ".jpg", ".jpeg"]:
+        elif extension in [".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"]:
             text = extract_text_from_image(path)
             result["raw_text"] = text
             result["rows"] = extract_holdings_from_text(text)
@@ -508,29 +512,194 @@ def normalize_pdf_text(text):
 def extract_text_from_image(path):
     """
     Extract text from JPG/PNG screenshot using OCR.
+
+    Requirements:
+    1. pip install pillow pytesseract
+    2. Install Tesseract OCR on Windows.
+       Common path:
+       C:\\Program Files\\Tesseract-OCR\\tesseract.exe
     """
 
     try:
-        from PIL import Image
+        from PIL import Image, ImageOps, ImageFilter
         import pytesseract
 
     except Exception as e:
         raise ImportError(
-            "Image import requires OCR dependencies. "
-            "Install using: pip install pillow pytesseract "
-            "and install Tesseract OCR on Windows."
+            "Image import requires OCR Python packages.\n\n"
+            "Please run this command:\n"
+            "pip install pillow pytesseract\n\n"
+            "Then install Tesseract OCR for Windows."
         ) from e
 
-    image = Image.open(str(path))
-    text = pytesseract.image_to_string(image)
+    configure_tesseract_if_available(pytesseract)
+    validate_tesseract_language_data()
 
-    if not text.strip():
+    try:
+        image = Image.open(str(path))
+
+    except Exception as e:
+        raise ValueError(f"Could not open selected image file. {e}") from e
+
+    ocr_texts = []
+
+    # Try original image first.
+    try:
+        ocr_texts.append(
+            pytesseract.image_to_string(
+                image,
+                lang="eng",
+                config=get_tesseract_config(6)
+            )
+        )
+    except Exception as e:
+        raise RuntimeError(
+            "Tesseract OCR is not working.\n\n"
+            "Please install Tesseract OCR on Windows and restart the app.\n"
+            "Expected path usually:\n"
+            "C:\\Program Files\\Tesseract-OCR\\tesseract.exe\n\n"
+            f"TESSDATA_PREFIX: {os.environ.get('TESSDATA_PREFIX', '')}\n"
+            f"Details: {e}"
+        ) from e
+
+    # Try preprocessed image for screenshots.
+    try:
+        processed = preprocess_image_for_ocr(image)
+        ocr_texts.append(
+            pytesseract.image_to_string(
+                processed,
+                lang="eng",
+                config=get_tesseract_config(6)
+            )
+        )
+    except Exception:
+        pass
+
+    # Try table-like OCR mode.
+    try:
+        processed = preprocess_image_for_ocr(image)
+        ocr_texts.append(
+            pytesseract.image_to_string(
+                processed,
+                lang="eng",
+                config=get_tesseract_config(11)
+            )
+        )
+    except Exception:
+        pass
+
+    text = "\n".join([t for t in ocr_texts if t and t.strip()]).strip()
+
+    if not text:
         raise ValueError(
-            "No readable text detected from image. "
-            "Please use a clearer screenshot or CSV/Excel file."
+            "No readable text detected from image.\n\n"
+            "Please use a clearer/high-resolution screenshot, "
+            "or use CSV/Excel for best accuracy."
         )
 
-    return text
+    return normalize_pdf_text(text)
+
+
+def configure_tesseract_if_available(pytesseract):
+    """
+    Configure pytesseract with common Windows install paths.
+
+    This version sets:
+    - tesseract_cmd
+    - TESSDATA_PREFIX without quotes
+    - PATH fallback
+    """
+
+    possible_paths = [
+        Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
+        Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
+    ]
+
+    for tesseract_path in possible_paths:
+
+        if not tesseract_path.exists():
+            continue
+
+        pytesseract.pytesseract.tesseract_cmd = str(tesseract_path)
+
+        install_folder = tesseract_path.parent
+        tessdata_path = install_folder / "tessdata"
+
+        if tessdata_path.exists():
+            # No quotes here. Tesseract reads this as an environment variable.
+            os.environ["TESSDATA_PREFIX"] = str(tessdata_path)
+
+        # Add install folder to PATH for subprocess dependencies.
+        current_path = os.environ.get("PATH", "")
+
+        if str(install_folder) not in current_path:
+            os.environ["PATH"] = str(install_folder) + os.pathsep + current_path
+
+        return
+
+
+def get_tesseract_config(psm=6):
+    """
+    Return Tesseract OCR config.
+
+    Do not include --tessdata-dir here; TESSDATA_PREFIX handles it.
+    """
+
+    return f"--psm {psm}"
+
+def validate_tesseract_language_data():
+    """
+    Validate English OCR language data exists.
+    """
+
+    possible_eng_paths = [
+        Path(r"C:\Program Files\Tesseract-OCR\tessdata\eng.traineddata"),
+        Path(r"C:\Program Files (x86)\Tesseract-OCR\tessdata\eng.traineddata"),
+    ]
+
+    for eng_path in possible_eng_paths:
+
+        if eng_path.exists():
+            return True
+
+    raise RuntimeError(
+        "Tesseract English language data is missing.\n\n"
+        "Required file:\n"
+        "C:\\Program Files\\Tesseract-OCR\\tessdata\\eng.traineddata\n\n"
+        "Fix:\n"
+        "1. Re-run Tesseract installer\n"
+        "2. Select English language data during installation\n"
+        "3. Or copy eng.traineddata into the tessdata folder"
+    )
+
+
+def preprocess_image_for_ocr(image):
+    """
+    Improve screenshot readability for OCR.
+    """
+
+    from PIL import ImageOps, ImageFilter
+
+    image = image.convert("L")
+
+    # Enlarge small screenshots.
+    width, height = image.size
+
+    if width < 1600:
+        scale = 1600 / max(width, 1)
+        new_size = (
+            int(width * scale),
+            int(height * scale),
+        )
+        image = image.resize(new_size)
+
+    image = ImageOps.autocontrast(image)
+    image = image.filter(ImageFilter.SHARPEN)
+
+    # Simple threshold.
+    image = image.point(lambda pixel: 255 if pixel > 180 else 0)
+
+    return image
 
 
 def extract_holdings_from_rows(rows):
