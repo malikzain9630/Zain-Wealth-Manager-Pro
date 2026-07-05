@@ -980,9 +980,12 @@ class MainWindow(QMainWindow):
             data = dialog.get_data()
 
             result = create_reports(
-                generate_excel=data["generate_excel"],
-                generate_pdf=data["generate_pdf"],
-                output_folder=data["output_folder"]
+                generate_excel=data.get("generate_excel", True),
+                generate_pdf=data.get("generate_pdf", True),
+                output_folder=data.get("output_folder", None),
+                generate_combined=data.get("generate_combined", True),
+                generate_section_wise=data.get("generate_section_wise", False),
+                selected_sections=data.get("selected_sections", None)
             )
 
             message_lines = [
@@ -1000,6 +1003,19 @@ class MainWindow(QMainWindow):
                     f"PDF Report:\n{result['pdf_file']}"
                 )
 
+            section_excel_files = result.get("section_excel_files", [])
+            section_pdf_files = result.get("section_pdf_files", [])
+
+            if section_excel_files:
+                message_lines.append("Section-wise Excel Reports:")
+                for file_path in section_excel_files:
+                    message_lines.append(str(file_path))
+
+            if section_pdf_files:
+                message_lines.append("Section-wise PDF Reports:")
+                for file_path in section_pdf_files:
+                    message_lines.append(str(file_path))
+
             QMessageBox.information(
                 self,
                 "Report Generated",
@@ -1012,10 +1028,22 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
 
+            error_text = str(e)
+
+            if "generate_combined" in error_text or "Generate_Combined" in error_text:
+                error_text = (
+                    "Report files mismatch detected.\n\n"
+                    "Please replace all 3 files together:\n"
+                    "1. src/services/report_service.py\n"
+                    "2. src/report_export_dialog.py\n"
+                    "3. src/gui.py\n\n"
+                    f"Original error: {str(e)}"
+                )
+
             QMessageBox.critical(
                 self,
                 "Report Error",
-                str(e)
+                error_text
             )
 
     def import_portfolio(self):

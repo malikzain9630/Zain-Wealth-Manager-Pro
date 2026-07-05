@@ -54,16 +54,22 @@ from services.wealth_asset_service import (
     get_all_wealth_asset_transactions,
     get_wealth_assets_summary,
     get_phase10_dashboard_summary,
+    calculate_projected_balance,
 )
 
 
 def create_reports(
     generate_excel=True,
     generate_pdf=True,
-    output_folder=None
+    output_folder=None,
+    generate_combined=True,
+    generate_section_wise=False,
+    selected_sections=None
 ):
     """
     Create Excel and/or PDF reports.
+
+    Supports combined report and section-wise separate reports.
 
     Existing report sheets are preserved.
     New database-based sheets are added:
@@ -77,17 +83,25 @@ def create_reports(
         8. Wealth Assets Summary
         9. Wealth Assets Detail
         10. Wealth Transactions
+        11. Wealth Projection
 
     Returns:
         {
             "excel_file": Path or None,
             "pdf_file": Path or None,
             "legacy_pdf_file": Path or None,
+            "section_excel_files": list[Path],
+            "section_pdf_files": list[Path],
         }
     """
 
     if not generate_excel and not generate_pdf:
         raise ValueError("Please select at least one report type: Excel or PDF.")
+
+    if not generate_combined and not generate_section_wise:
+        raise ValueError("Please select combined report or section-wise reports.")
+
+    selected_sections = normalize_selected_sections(selected_sections)
 
     if output_folder:
         output = Path(output_folder)
@@ -96,9 +110,11 @@ def create_reports(
 
     output.mkdir(parents=True, exist_ok=True)
 
-    excel_file = output / "Zain_Wealth_Manager_Pro_v1.xlsx"
-    legacy_pdf_file = output / "report.pdf"
-    combined_pdf_file = output / "Zain_Wealth_Manager_Combined_Report.pdf"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    excel_file = output / f"Zain_Wealth_Manager_Pro_v1_{timestamp}.xlsx"
+    legacy_pdf_file = output / f"report_{timestamp}.pdf"
+    combined_pdf_file = output / f"Zain_Wealth_Manager_Combined_Report_{timestamp}.pdf"
 
     initialize_database()
     initialize_wealth_assets()
@@ -113,9 +129,11 @@ def create_reports(
         "excel_file": None,
         "pdf_file": None,
         "legacy_pdf_file": None,
+        "section_excel_files": [],
+        "section_pdf_files": [],
     }
 
-    if generate_excel:
+    if generate_excel and generate_combined:
 
         workbook = xlsxwriter.Workbook(str(excel_file))
 
@@ -205,11 +223,17 @@ def create_reports(
             formats
         )
 
+        create_wealth_projection_sheet(
+            workbook,
+            wealth_assets,
+            formats
+        )
+
         workbook.close()
 
         result["excel_file"] = excel_file
 
-    if generate_pdf:
+    if generate_pdf and generate_combined:
 
         # Keep existing PDF report generation safe.
         try:
@@ -230,7 +254,455 @@ def create_reports(
 
         result["pdf_file"] = combined_pdf_file
 
+
+    if generate_section_wise:
+
+        if generate_excel:
+
+            result["section_excel_files"] = create_section_excel_reports(
+                output=output,
+                selected_sections=selected_sections,
+                psx_holdings=psx_holdings,
+                mutual_funds=mutual_funds,
+                dividends=dividends,
+                wealth_assets=wealth_assets,
+                wealth_transactions=wealth_transactions,
+            )
+
+        if generate_pdf:
+
+            result["section_pdf_files"] = create_section_pdf_reports(
+                output=output,
+                selected_sections=selected_sections,
+                psx_holdings=psx_holdings,
+                mutual_funds=mutual_funds,
+                dividends=dividends,
+                wealth_assets=wealth_assets,
+                wealth_transactions=wealth_transactions,
+            )
+
     return result
+
+
+REPORT_SECTIONS = [
+    ("overall", "Overall Summary"),
+    ("psx", "PSX Portfolio"),
+    ("mutual_funds", "Mutual Funds"),
+    ("dividends", "Dividends"),
+    ("wealth_assets", "Wealth Assets"),
+    ("wealth_projection", "Wealth Projection"),
+    ("charts", "Charts"),
+]
+
+
+def normalize_selected_sections(selected_sections=None):
+    """
+    Normalize selected report sections.
+    """
+
+    allowed = [key for key, _ in REPORT_SECTIONS]
+
+    if not selected_sections:
+        return allowed
+
+    cleaned = []
+
+    for section in selected_sections:
+        section = str(section or "").strip()
+
+        if section in allowed and section not in cleaned:
+            cleaned.append(section)
+
+    if not cleaned:
+        return allowed
+
+    return cleaned
+
+
+def get_report_section_label(section_key):
+    """
+    Return user-friendly label for section key.
+    """
+
+    for key, label in REPORT_SECTIONS:
+        if key == section_key:
+            return label
+
+    return str(section_key).replace("_", " ").title()
+
+
+def safe_report_filename(text):
+    """
+    Return safe filename text.
+    """
+
+    text = str(text or "Report").strip()
+    allowed_chars = []
+
+    for char in text:
+        if char.isalnum():
+            allowed_chars.append(char)
+        elif char in [" ", "-", "_"]:
+            allowed_chars.append("_")
+
+    filename = "".join(allowed_chars)
+
+    while "__" in filename:
+        filename = filename.replace("__", "_")
+
+    filename = filename.strip("_")
+
+    if not filename:
+        filename = "Report"
+
+    return filename
+
+
+def create_section_excel_reports(
+    output,
+    selected_sections,
+    psx_holdings,
+    mutual_funds,
+    dividends,
+    wealth_assets,
+    wealth_transactions,
+):
+    """
+    Create separate Excel files for selected report sections.
+    """
+
+    created_files = []
+
+    for section in normalize_selected_sections(selected_sections):
+
+        label = get_report_section_label(section)
+        filename = safe_report_filename(label)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        excel_file = output / f"Zain_Wealth_Manager_{filename}_{timestamp}.xlsx"
+
+        workbook = xlsxwriter.Workbook(str(excel_file))
+        formats = create_formats(workbook)
+
+        create_currency_info_sheet(workbook, formats)
+
+        if section == "overall":
+
+            create_overall_wealth_sheet(
+                workbook,
+                psx_holdings,
+                mutual_funds,
+                formats,
+                wealth_assets
+            )
+
+        elif section == "psx":
+
+            create_psx_portfolio_sheet(
+                workbook,
+                psx_holdings,
+                formats
+            )
+
+        elif section == "mutual_funds":
+
+            create_mutual_funds_portfolio_sheet(
+                workbook,
+                mutual_funds,
+                formats
+            )
+
+        elif section == "dividends":
+
+            create_dividend_income_sheet(
+                workbook,
+                dividends,
+                formats
+            )
+
+            create_dividend_summary_sheet(
+                workbook,
+                formats
+            )
+
+            create_dividend_forecast_sheet(
+                workbook,
+                formats
+            )
+
+        elif section == "wealth_assets":
+
+            create_wealth_assets_summary_sheet(
+                workbook,
+                wealth_assets,
+                formats
+            )
+
+            create_wealth_assets_detail_sheet(
+                workbook,
+                wealth_assets,
+                formats
+            )
+
+            create_wealth_asset_transactions_sheet(
+                workbook,
+                wealth_transactions,
+                formats
+            )
+
+        elif section == "wealth_projection":
+
+            create_wealth_projection_sheet(
+                workbook,
+                wealth_assets,
+                formats
+            )
+
+        elif section == "charts":
+
+            create_charts_sheet(
+                workbook,
+                psx_holdings,
+                mutual_funds,
+                formats,
+                wealth_assets
+            )
+
+            create_dividend_charts_sheet(
+                workbook,
+                formats
+            )
+
+        workbook.close()
+        created_files.append(excel_file)
+
+    return created_files
+
+
+def create_section_pdf_reports(
+    output,
+    selected_sections,
+    psx_holdings,
+    mutual_funds,
+    dividends,
+    wealth_assets,
+    wealth_transactions,
+):
+    """
+    Create separate PDF files for selected report sections.
+    """
+
+    created_files = []
+
+    for section in normalize_selected_sections(selected_sections):
+
+        label = get_report_section_label(section)
+        filename = safe_report_filename(label)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        pdf_file = output / f"Zain_Wealth_Manager_{filename}_{timestamp}.pdf"
+
+        create_single_section_pdf_report(
+            pdf_file=pdf_file,
+            section=section,
+            label=label,
+            psx_holdings=psx_holdings,
+            mutual_funds=mutual_funds,
+            dividends=dividends,
+            wealth_assets=wealth_assets,
+            wealth_transactions=wealth_transactions,
+        )
+
+        created_files.append(pdf_file)
+
+    return created_files
+
+
+def create_single_section_pdf_report(
+    pdf_file,
+    section,
+    label,
+    psx_holdings,
+    mutual_funds,
+    dividends,
+    wealth_assets,
+    wealth_transactions,
+):
+    """
+    Create one PDF report for one selected section.
+    """
+
+    try:
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import (
+            SimpleDocTemplate,
+            Paragraph,
+            Spacer,
+        )
+
+    except Exception:
+        return
+
+    doc = SimpleDocTemplate(
+        str(pdf_file),
+        pagesize=landscape(A4),
+        rightMargin=24,
+        leftMargin=24,
+        topMargin=24,
+        bottomMargin=24,
+    )
+
+    styles = getSampleStyleSheet()
+    story = []
+
+    story.append(
+        Paragraph(
+            f"Zain Wealth Manager Pro - {label} Report",
+            styles["Title"]
+        )
+    )
+
+    story.append(
+        Paragraph(
+            f"Generated On: {datetime.now().strftime('%d-%m-%Y %I:%M %p')}",
+            styles["Normal"]
+        )
+    )
+
+    try:
+        story.append(Paragraph(get_conversion_note(), styles["Normal"]))
+    except Exception:
+        pass
+
+    story.append(Spacer(1, 16))
+
+    append_pdf_section(
+        story=story,
+        styles=styles,
+        section=section,
+        psx_holdings=psx_holdings,
+        mutual_funds=mutual_funds,
+        dividends=dividends,
+        wealth_assets=wealth_assets,
+        wealth_transactions=wealth_transactions,
+    )
+
+    doc.build(story)
+
+
+def append_pdf_section(
+    story,
+    styles,
+    section,
+    psx_holdings,
+    mutual_funds,
+    dividends,
+    wealth_assets,
+    wealth_transactions,
+):
+    """
+    Append one section to PDF story.
+    """
+
+    from reportlab.platypus import Paragraph, Spacer
+
+    if section == "overall":
+
+        story.append(Paragraph("Overall Wealth Summary", styles["Heading2"]))
+        story.append(
+            create_pdf_table(
+                get_overall_summary_rows(
+                    psx_holdings,
+                    mutual_funds,
+                    wealth_assets
+                )
+            )
+        )
+        story.append(Spacer(1, 16))
+        return
+
+    if section == "psx":
+
+        story.append(Paragraph("PSX Portfolio", styles["Heading2"]))
+        story.append(create_pdf_table(get_psx_pdf_rows(psx_holdings)))
+        story.append(Spacer(1, 16))
+        return
+
+    if section == "mutual_funds":
+
+        story.append(Paragraph("Mutual Funds Portfolio", styles["Heading2"]))
+        story.append(create_pdf_table(get_mutual_fund_pdf_rows(mutual_funds)))
+        story.append(Spacer(1, 16))
+        return
+
+    if section == "dividends":
+
+        story.append(Paragraph("Dividend Income Summary", styles["Heading2"]))
+        story.append(create_pdf_table(get_dividend_summary_pdf_rows()))
+        story.append(Spacer(1, 16))
+
+        story.append(Paragraph("Passive Income Forecast", styles["Heading2"]))
+        story.append(create_pdf_table(get_passive_income_forecast_pdf_rows()))
+        story.append(Spacer(1, 16))
+
+        story.append(Paragraph("Dividend Yield by Stock", styles["Heading2"]))
+        story.append(create_pdf_table(get_dividend_yield_pdf_rows()))
+        story.append(Spacer(1, 16))
+
+        story.append(Paragraph("Top Dividend Stocks", styles["Heading2"]))
+        story.append(create_pdf_table(get_top_dividend_stocks_pdf_rows()))
+        story.append(Spacer(1, 16))
+
+        story.append(Paragraph("Dividend Records", styles["Heading2"]))
+        story.append(create_pdf_table(get_dividend_records_pdf_rows(dividends)))
+        story.append(Spacer(1, 16))
+        return
+
+    if section == "wealth_assets":
+
+        story.append(Paragraph("Manual Wealth Assets Summary", styles["Heading2"]))
+        story.append(create_pdf_table(get_wealth_assets_summary_pdf_rows(wealth_assets)))
+        story.append(Spacer(1, 16))
+
+        story.append(Paragraph("Manual Wealth Assets Detail", styles["Heading2"]))
+        story.append(create_pdf_table(get_wealth_assets_detail_pdf_rows(wealth_assets)))
+        story.append(Spacer(1, 16))
+
+        story.append(Paragraph("Wealth Asset Transactions", styles["Heading2"]))
+        story.append(create_pdf_table(get_wealth_asset_transactions_pdf_rows(wealth_transactions)))
+        story.append(Spacer(1, 16))
+        return
+
+    if section == "wealth_projection":
+
+        story.append(Paragraph("Wealth Projection / Forecast", styles["Heading2"]))
+        story.append(create_pdf_table(get_wealth_projection_pdf_rows(wealth_assets)))
+        story.append(Spacer(1, 16))
+        return
+
+    if section == "charts":
+
+        story.append(Paragraph("Charts & Visual Analytics", styles["Heading2"]))
+
+        chart_drawings = create_pdf_chart_drawings(
+            psx_holdings,
+            mutual_funds,
+            wealth_assets
+        )
+
+        for chart in chart_drawings:
+            story.append(chart)
+            story.append(Spacer(1, 12))
+
+        story.append(Paragraph("Dividend Charts", styles["Heading2"]))
+
+        dividend_chart_drawings = create_pdf_dividend_chart_drawings()
+
+        for chart in dividend_chart_drawings:
+            story.append(chart)
+            story.append(Spacer(1, 12))
+
+        return
+
 
 
 def create_formats(workbook):
@@ -985,6 +1457,152 @@ def get_profit_loss_rows(holdings, mutual_funds):
         rows.append(["Mutual Funds", mf_profit])
 
     return rows
+
+
+
+def create_wealth_projection_sheet(workbook, wealth_assets, formats):
+    """
+    Create 5-year wealth projection sheet for manual wealth assets.
+    """
+
+    sheet = safe_add_worksheet(workbook, "Wealth Projection")
+
+    sheet.merge_range("A1:K1", "5-Year Wealth Projection / Forecast", formats["title"])
+    sheet.write("A2", "Generated On", formats["section"])
+    sheet.write("B2", datetime.now().strftime("%d-%m-%Y %I:%M %p"), formats["text"])
+    sheet.write("A3", "Assumption", formats["section"])
+    sheet.write(
+        "B3",
+        "Default rates: PF 8%, Pension/MTPF 10%, Bank Cash 0%, Other 5%",
+        formats["text"]
+    )
+
+    headers = [
+        "Asset Type",
+        "Account Name",
+        "Institution",
+        "Current Balance",
+        "Monthly Contribution",
+        "Employer Contribution",
+        "Annual Return %",
+        "Years",
+        "Total Contribution",
+        "Estimated Profit",
+        "Projected Balance",
+    ]
+
+    for col, header in enumerate(headers):
+        sheet.write(5, col, header, formats["header"])
+
+    row = 6
+
+    total_current = 0
+    total_contribution = 0
+    total_profit = 0
+    total_projected = 0
+
+    if not wealth_assets:
+        sheet.write(row, 0, "No Data", formats["text"])
+        row += 1
+    else:
+        for item in wealth_assets:
+
+            asset_type = str(safe_get(item, "asset_type", "Other"))
+            annual_return = get_default_projection_rate(asset_type)
+            years = 5
+
+            projection = calculate_projected_balance(
+                current_balance=safe_get(item, "current_balance", 0),
+                monthly_contribution=safe_get(item, "monthly_contribution", 0),
+                employer_contribution=safe_get(item, "employer_contribution", 0),
+                annual_return_percent=annual_return,
+                years=years,
+            )
+
+            total_current += safe_float(projection["current_balance"])
+            total_contribution += safe_float(projection["total_contribution"])
+            total_profit += safe_float(projection["estimated_profit"])
+            total_projected += safe_float(projection["projected_balance"])
+
+            sheet.write(row, 0, asset_type, formats["text"])
+            sheet.write(row, 1, str(safe_get(item, "account_name", "")), formats["text"])
+            sheet.write(row, 2, str(safe_get(item, "institution", "")), formats["text"])
+            sheet.write_number(row, 3, display_amount(projection["current_balance"]), formats["currency"])
+            sheet.write_number(row, 4, display_amount(safe_get(item, "monthly_contribution", 0)), formats["currency"])
+            sheet.write_number(row, 5, display_amount(safe_get(item, "employer_contribution", 0)), formats["currency"])
+            sheet.write_number(row, 6, annual_return / 100, formats["percent"])
+            sheet.write_number(row, 7, years, formats["text"])
+            sheet.write_number(row, 8, display_amount(projection["total_contribution"]), formats["currency"])
+            sheet.write_number(row, 9, display_amount(projection["estimated_profit"]), formats["profit"])
+            sheet.write_number(row, 10, display_amount(projection["projected_balance"]), formats["total_value"])
+
+            row += 1
+
+    total_row = row + 1
+
+    sheet.write(total_row, 2, "Total", formats["total_label"])
+    sheet.write_number(total_row, 3, display_amount(total_current), formats["total_value"])
+    sheet.write_number(total_row, 8, display_amount(total_contribution), formats["total_value"])
+    sheet.write_number(total_row, 9, display_amount(total_profit), formats["total_value"])
+    sheet.write_number(total_row, 10, display_amount(total_projected), formats["total_value"])
+
+    detail_start_row = total_row + 4
+
+    sheet.merge_range(
+        detail_start_row,
+        0,
+        detail_start_row,
+        6,
+        "Year-wise Projection Detail",
+        formats["section"]
+    )
+
+    detail_headers = [
+        "Asset",
+        "Year",
+        "Opening Balance",
+        "User Contribution",
+        "Employer Contribution",
+        "Estimated Profit",
+        "Closing Balance",
+    ]
+
+    for col, header in enumerate(detail_headers):
+        sheet.write(detail_start_row + 1, col, header, formats["header"])
+
+    row = detail_start_row + 2
+
+    for item in wealth_assets or []:
+
+        asset_type = str(safe_get(item, "asset_type", "Other"))
+        asset_name = str(safe_get(item, "account_name", ""))
+        annual_return = get_default_projection_rate(asset_type)
+
+        yearly_rows = calculate_yearly_projection_rows(
+            current_balance=safe_get(item, "current_balance", 0),
+            monthly_contribution=safe_get(item, "monthly_contribution", 0),
+            employer_contribution=safe_get(item, "employer_contribution", 0),
+            annual_return_percent=annual_return,
+            years=5,
+        )
+
+        for yearly in yearly_rows:
+            sheet.write(row, 0, f"{asset_type} - {asset_name}", formats["text"])
+            sheet.write_number(row, 1, yearly["year"], formats["text"])
+            sheet.write_number(row, 2, display_amount(yearly["opening_balance"]), formats["currency"])
+            sheet.write_number(row, 3, display_amount(yearly["user_contribution"]), formats["currency"])
+            sheet.write_number(row, 4, display_amount(yearly["employer_contribution"]), formats["currency"])
+            sheet.write_number(row, 5, display_amount(yearly["estimated_profit"]), formats["profit"])
+            sheet.write_number(row, 6, display_amount(yearly["closing_balance"]), formats["total_value"])
+            row += 1
+
+    sheet.set_column("A:A", 22)
+    sheet.set_column("B:C", 26)
+    sheet.set_column("D:F", 22)
+    sheet.set_column("G:G", 16)
+    sheet.set_column("H:H", 10)
+    sheet.set_column("I:K", 22)
+    sheet.freeze_panes(6, 0)
 
 
 
@@ -2063,6 +2681,10 @@ def create_combined_pdf_report(pdf_file, holdings, mutual_funds, dividends, weal
     story.append(create_pdf_table(get_wealth_asset_transactions_pdf_rows(wealth_transactions)))
     story.append(Spacer(1, 16))
 
+    story.append(Paragraph("Wealth Projection / Forecast", styles["Heading2"]))
+    story.append(create_pdf_table(get_wealth_projection_pdf_rows(wealth_assets)))
+    story.append(Spacer(1, 16))
+
     story.append(Paragraph("Dividend Income Summary", styles["Heading2"]))
     story.append(create_pdf_table(get_dividend_summary_pdf_rows()))
     story.append(Spacer(1, 16))
@@ -2124,7 +2746,7 @@ def create_pdf_table(data):
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
         ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [
@@ -2536,6 +3158,174 @@ def get_dividend_records_pdf_rows(dividends):
         ])
 
     return rows
+
+
+def get_wealth_projection_pdf_rows(wealth_assets):
+    """
+    Return compact PDF rows for 5-year wealth projection.
+    """
+
+    rows = [[
+        "Type",
+        "Account",
+        "Current",
+        "Monthly Saving",
+        "Return",
+        "5Y Contribution",
+        "5Y Profit",
+        "5Y Projected",
+    ]]
+
+    wealth_assets = wealth_assets or []
+
+    if not wealth_assets:
+        rows.append([
+            "No Data",
+            "",
+            format_money(0),
+            format_money(0),
+            "0.00%",
+            format_money(0),
+            format_money(0),
+            format_money(0),
+        ])
+        return rows
+
+    total_current = 0
+    total_contribution = 0
+    total_profit = 0
+    total_projected = 0
+
+    for item in wealth_assets:
+
+        asset_type = str(safe_get(item, "asset_type", "Other"))
+        annual_return = get_default_projection_rate(asset_type)
+
+        projection = calculate_projected_balance(
+            current_balance=safe_get(item, "current_balance", 0),
+            monthly_contribution=safe_get(item, "monthly_contribution", 0),
+            employer_contribution=safe_get(item, "employer_contribution", 0),
+            annual_return_percent=annual_return,
+            years=5,
+        )
+
+        monthly_saving = (
+            safe_float(safe_get(item, "monthly_contribution", 0))
+            + safe_float(safe_get(item, "employer_contribution", 0))
+        )
+
+        total_current += safe_float(projection["current_balance"])
+        total_contribution += safe_float(projection["total_contribution"])
+        total_profit += safe_float(projection["estimated_profit"])
+        total_projected += safe_float(projection["projected_balance"])
+
+        rows.append([
+            asset_type,
+            str(safe_get(item, "account_name", "")),
+            format_money(projection["current_balance"]),
+            format_money(monthly_saving),
+            format_percent(annual_return),
+            format_money(projection["total_contribution"]),
+            format_money(projection["estimated_profit"]),
+            format_money(projection["projected_balance"]),
+        ])
+
+    rows.append([
+        "Total",
+        "",
+        format_money(total_current),
+        "",
+        "",
+        format_money(total_contribution),
+        format_money(total_profit),
+        format_money(total_projected),
+    ])
+
+    return rows
+
+
+def get_default_projection_rate(asset_type):
+    """
+    Return default annual projection rate by asset type.
+    """
+
+    asset_type = str(asset_type or "").strip()
+
+    if asset_type == "Provident Fund":
+        return 8.0
+
+    if asset_type == "Pension / MTPF":
+        return 10.0
+
+    if asset_type == "Bank Cash":
+        return 0.0
+
+    return 5.0
+
+
+def calculate_yearly_projection_rows(
+    current_balance,
+    monthly_contribution,
+    employer_contribution,
+    annual_return_percent,
+    years=5
+):
+    """
+    Calculate year-wise projection rows using monthly compounding.
+    """
+
+    balance = safe_float(current_balance)
+    monthly_contribution = safe_float(monthly_contribution)
+    employer_contribution = safe_float(employer_contribution)
+    annual_return_percent = safe_float(annual_return_percent)
+    years = int(safe_float(years))
+
+    if years <= 0:
+        years = 1
+
+    monthly_return = annual_return_percent / 100 / 12
+
+    rows = []
+
+    for year in range(1, years + 1):
+
+        opening_balance = balance
+        user_contribution = 0
+        employer_contribution_total = 0
+
+        for _ in range(12):
+
+            balance += monthly_contribution
+            user_contribution += monthly_contribution
+
+            balance += employer_contribution
+            employer_contribution_total += employer_contribution
+
+            if monthly_return > 0:
+                balance = balance * (1 + monthly_return)
+
+        closing_balance = balance
+        estimated_profit = (
+            closing_balance
+            - opening_balance
+            - user_contribution
+            - employer_contribution_total
+        )
+
+        if estimated_profit < 0:
+            estimated_profit = 0
+
+        rows.append({
+            "year": year,
+            "opening_balance": round(opening_balance, 2),
+            "user_contribution": round(user_contribution, 2),
+            "employer_contribution": round(employer_contribution_total, 2),
+            "estimated_profit": round(estimated_profit, 2),
+            "closing_balance": round(closing_balance, 2),
+        })
+
+    return rows
+
 
 
 def get_wealth_assets_summary_pdf_rows(wealth_assets):
