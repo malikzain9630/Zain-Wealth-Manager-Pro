@@ -41,6 +41,7 @@ from dividend_window import DividendWindow
 from dividend_charts_window import DividendChartsWindow
 from dividend_yield_window import DividendYieldWindow
 from wealth_asset_window import WealthAssetWindow
+from wealth_projection_window import WealthProjectionWindow
 from services.mutual_fund_service import get_mutual_fund_summary
 from services.dividend_yield_service import get_dividend_dashboard_summary
 from services.wealth_asset_service import get_phase10_dashboard_summary
@@ -90,6 +91,7 @@ class MainWindow(QMainWindow):
         self.dividend_charts_window = None
         self.dividend_yield_window = None
         self.wealth_asset_window = None
+        self.wealth_projection_window = None
 
         self.init_ui()
         self.apply_theme()
@@ -210,6 +212,7 @@ class MainWindow(QMainWindow):
             ("📊 Dividend Charts", self.open_dividend_charts),
             ("💸 Dividend Yield", self.open_dividend_yield),
             ("🏦 Wealth Assets", self.open_wealth_assets),
+            ("📈 Wealth Projection", self.open_wealth_projection),
             ("📄 Excel / PDF Report", self.generate_reports),
             ("💾 Backup", self.backup_database),
             ("♻ Restore", self.restore_database),
@@ -1330,6 +1333,25 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Wealth Assets Error",
+                str(e)
+            )
+
+
+    def open_wealth_projection(self):
+
+        try:
+            self.wealth_projection_window = WealthProjectionWindow(self)
+            self.wealth_projection_window.show()
+
+            self.statusBar().showMessage(
+                "Wealth Projection / Forecast opened."
+            )
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Wealth Projection Error",
                 str(e)
             )
 
