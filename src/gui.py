@@ -40,6 +40,7 @@ from dividend_window import DividendWindow
 from dividend_charts_window import DividendChartsWindow
 from dividend_yield_window import DividendYieldWindow
 from services.mutual_fund_service import get_mutual_fund_summary
+from services.dividend_yield_service import get_dividend_dashboard_summary
 
 
 class SortableTableWidgetItem(QTableWidgetItem):
@@ -118,6 +119,16 @@ class MainWindow(QMainWindow):
 
         combined_summary_layout = self.create_combined_summary_cards()
 
+        dividend_summary_heading = QLabel("💸 Dividend & Passive Income Summary")
+        dividend_summary_heading.setAlignment(Qt.AlignCenter)
+        dividend_summary_heading.setStyleSheet("""
+            font-size:16px;
+            font-weight:bold;
+            padding:6px;
+        """)
+
+        dividend_summary_layout = self.create_dividend_summary_cards()
+
         self.concentration_alert = QLabel("")
         self.concentration_alert.setAlignment(Qt.AlignCenter)
         self.concentration_alert.setMinimumHeight(35)
@@ -129,6 +140,8 @@ class MainWindow(QMainWindow):
         content_layout.addLayout(summary_layout)
         content_layout.addWidget(combined_summary_heading)
         content_layout.addLayout(combined_summary_layout)
+        content_layout.addWidget(dividend_summary_heading)
+        content_layout.addLayout(dividend_summary_layout)
         content_layout.addWidget(self.concentration_alert)
         content_layout.addLayout(search_layout)
         content_layout.addWidget(self.table)
@@ -228,6 +241,41 @@ class MainWindow(QMainWindow):
 
         return layout
 
+
+    def create_dividend_summary_cards(self):
+
+        main_layout = QVBoxLayout()
+
+        first_row = QHBoxLayout()
+        second_row = QHBoxLayout()
+
+        first_row_cards = [
+            ("Total Dividend Received", "dividend_total_received"),
+            ("Current Year Dividend", "dividend_current_year"),
+            ("Monthly Forecast", "dividend_monthly_forecast"),
+        ]
+
+        second_row_cards = [
+            ("Yearly Forecast", "dividend_yearly_forecast"),
+            ("Top Dividend Stock", "dividend_top_stock"),
+            ("Dividend Records", "dividend_records"),
+        ]
+
+        for title, key in first_row_cards:
+
+            card = self.create_card(title, key)
+            first_row.addWidget(card)
+
+        for title, key in second_row_cards:
+
+            card = self.create_card(title, key)
+            second_row.addWidget(card)
+
+        main_layout.addLayout(first_row)
+        main_layout.addLayout(second_row)
+
+        return main_layout
+
     def create_card(self, title, key):
 
         card = QFrame()
@@ -321,6 +369,7 @@ class MainWindow(QMainWindow):
             self.display_holdings(self.all_holdings)
             self.update_summary_cards(self.all_holdings)
             self.update_combined_summary_cards(self.all_holdings)
+            self.update_dividend_dashboard_cards()
             self.update_concentration_alert(self.all_holdings)
 
             self.statusBar().showMessage(
@@ -559,6 +608,75 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Search cleared. Total Holdings: {len(self.all_holdings)}"
         )
+
+
+    def update_dividend_dashboard_cards(self):
+
+        try:
+            dividend_summary = get_dividend_dashboard_summary()
+
+            self.summary_labels["dividend_total_received"].setText(
+                self.format_currency(dividend_summary["total_net_received"])
+            )
+
+            self.summary_labels["dividend_current_year"].setText(
+                self.format_currency(dividend_summary["current_year_net"])
+            )
+
+            self.summary_labels["dividend_monthly_forecast"].setText(
+                self.format_currency(dividend_summary["monthly_forecast"])
+            )
+
+            self.summary_labels["dividend_yearly_forecast"].setText(
+                self.format_currency(dividend_summary["yearly_forecast"])
+            )
+
+            top_stock = dividend_summary.get("top_dividend_stock", "")
+
+            if not top_stock:
+                top_stock = "-"
+
+            self.summary_labels["dividend_top_stock"].setText(
+                str(top_stock).upper()
+            )
+
+            self.summary_labels["dividend_records"].setText(
+                str(dividend_summary["total_records"])
+            )
+
+            self.summary_labels["dividend_total_received"].setStyleSheet("""
+                font-size:17px;
+                font-weight:bold;
+                color:green;
+            """)
+
+            self.summary_labels["dividend_monthly_forecast"].setStyleSheet("""
+                font-size:17px;
+                font-weight:bold;
+                color:green;
+            """)
+
+            self.summary_labels["dividend_yearly_forecast"].setStyleSheet("""
+                font-size:17px;
+                font-weight:bold;
+                color:green;
+            """)
+
+        except Exception:
+
+            default_values = {
+                "dividend_total_received": self.format_currency(0),
+                "dividend_current_year": self.format_currency(0),
+                "dividend_monthly_forecast": self.format_currency(0),
+                "dividend_yearly_forecast": self.format_currency(0),
+                "dividend_top_stock": "-",
+                "dividend_records": "0",
+            }
+
+            for key, value in default_values.items():
+
+                if key in self.summary_labels:
+                    self.summary_labels[key].setText(value)
 
     def update_combined_summary_cards(self, holdings):
 
