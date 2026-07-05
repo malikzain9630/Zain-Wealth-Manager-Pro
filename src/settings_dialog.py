@@ -1,179 +1,322 @@
 """
 Settings Dialog
-Handles application settings UI.
+Application settings window with multi-currency support.
 """
 
 from PySide6.QtWidgets import (
     QDialog,
-    QFormLayout,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QLabel,
+    QComboBox,
+    QDoubleSpinBox,
     QLineEdit,
     QPushButton,
-    QHBoxLayout,
-    QVBoxLayout,
+    QFileDialog,
+    QDialogButtonBox,
+    QGroupBox,
+    QScrollArea,
+    QWidget,
     QMessageBox,
-    QComboBox,
-    QCheckBox,
-    QFileDialog
 )
 
 from services.settings_service import (
     load_settings,
-    reset_settings
+    SUPPORTED_CURRENCIES,
+    DEFAULT_EXCHANGE_RATES,
 )
 
 
+CURRENCY_NAMES = {
+    "PKR": "Pakistani Rupee",
+    "USD": "US Dollar",
+    "EUR": "Euro",
+    "GBP": "British Pound",
+    "SAR": "Saudi Riyal",
+    "AED": "UAE Dirham",
+    "CAD": "Canadian Dollar",
+    "AUD": "Australian Dollar",
+    "JPY": "Japanese Yen",
+    "CNY": "Chinese Yuan",
+}
+
+
 class SettingsDialog(QDialog):
+    """
+    Settings dialog for app preferences.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("Settings")
-        self.setMinimumWidth(450)
-
         self.settings = load_settings()
+        self.rate_inputs = {}
 
-        self.currency = QComboBox()
-        self.currency.addItems(["PKR", "USD"])
+        self.setWindowTitle("Settings")
+        self.resize(650, 650)
 
-        self.concentration_limit = QLineEdit()
+        self.init_ui()
+        self.load_current_values()
 
-        self.backup_folder = QLineEdit()
+    def init_ui(self):
 
-        self.btn_browse_backup = QPushButton("Browse")
+        main_layout = QVBoxLayout()
+        self.setLayout(main_layout)
 
-        self.theme = QComboBox()
-        self.theme.addItems(["light", "dark"])
+        heading = QLabel("⚙ Settings")
+        heading.setStyleSheet("""
+            font-size:22px;
+            font-weight:bold;
+            padding:8px;
+        """)
 
-        self.auto_refresh = QCheckBox("Enable Auto Refresh")
+        main_layout.addWidget(heading)
 
-        self.btn_save = QPushButton("Save")
-        self.btn_cancel = QPushButton("Cancel")
-        self.btn_reset = QPushButton("Reset Default")
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
 
-        self.setup_ui()
-        self.load_values()
+        container = QWidget()
+        container_layout = QVBoxLayout()
+        container.setLayout(container_layout)
 
-        self.btn_save.clicked.connect(self.validate_and_accept)
-        self.btn_cancel.clicked.connect(self.reject)
-        self.btn_reset.clicked.connect(self.reset_default_settings)
-        self.btn_browse_backup.clicked.connect(self.browse_backup_folder)
+        container_layout.addWidget(self.create_general_group())
+        container_layout.addWidget(self.create_currency_group())
+        container_layout.addWidget(self.create_exchange_rates_group())
+        container_layout.addStretch()
 
-    def setup_ui(self):
+        scroll.setWidget(container)
+        main_layout.addWidget(scroll)
 
-        form = QFormLayout()
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.Save | QDialogButtonBox.Cancel
+        )
 
-        form.addRow("Currency", self.currency)
-        form.addRow("Concentration Alert Limit (%)", self.concentration_limit)
+        self.buttons.accepted.connect(self.validate_and_accept)
+        self.buttons.rejected.connect(self.reject)
+
+        main_layout.addWidget(self.buttons)
+
+    def create_general_group(self):
+
+        group = QGroupBox("General Settings")
+        layout = QGridLayout()
+        group.setLayout(layout)
+
+        theme_label = QLabel("Theme:")
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["light", "dark"])
+        self.theme_combo.setMinimumHeight(34)
+
+        concentration_label = QLabel("Concentration Limit (%):")
+        self.concentration_spin = QDoubleSpinBox()
+        self.concentration_spin.setRange(1, 100)
+        self.concentration_spin.setDecimals(2)
+        self.concentration_spin.setSingleStep(1)
+        self.concentration_spin.setMinimumHeight(34)
+
+        backup_label = QLabel("Backup Folder:")
+        self.backup_input = QLineEdit()
+        self.backup_input.setMinimumHeight(34)
+
+        browse_btn = QPushButton("Browse")
+        browse_btn.setMinimumHeight(34)
+        browse_btn.clicked.connect(self.browse_backup_folder)
 
         backup_layout = QHBoxLayout()
-        backup_layout.addWidget(self.backup_folder)
-        backup_layout.addWidget(self.btn_browse_backup)
+        backup_layout.addWidget(self.backup_input)
+        backup_layout.addWidget(browse_btn)
 
-        form.addRow("Backup Folder", backup_layout)
-        form.addRow("Theme", self.theme)
-        form.addRow("", self.auto_refresh)
+        layout.addWidget(theme_label, 0, 0)
+        layout.addWidget(self.theme_combo, 0, 1)
 
-        buttons = QHBoxLayout()
-        buttons.addWidget(self.btn_save)
-        buttons.addWidget(self.btn_reset)
-        buttons.addWidget(self.btn_cancel)
+        layout.addWidget(concentration_label, 1, 0)
+        layout.addWidget(self.concentration_spin, 1, 1)
 
-        layout = QVBoxLayout()
-        layout.addLayout(form)
-        layout.addLayout(buttons)
+        layout.addWidget(backup_label, 2, 0)
+        layout.addLayout(backup_layout, 2, 1)
 
-        self.setLayout(layout)
+        return group
 
-    def load_values(self):
+    def create_currency_group(self):
 
-        currency = str(self.settings.get("currency", "PKR"))
+        group = QGroupBox("Display Currency")
+        layout = QGridLayout()
+        group.setLayout(layout)
 
-        currency_index = self.currency.findText(currency)
+        currency_label = QLabel("Display Currency:")
+
+        self.currency_combo = QComboBox()
+        self.currency_combo.setMinimumHeight(34)
+
+        for currency_code in SUPPORTED_CURRENCIES:
+
+            currency_name = CURRENCY_NAMES.get(currency_code, currency_code)
+            self.currency_combo.addItem(
+                f"{currency_code} - {currency_name}",
+                currency_code
+            )
+
+        note = QLabel(
+            "Database values remain saved in PKR. "
+            "Selected currency is used only for display/report conversion."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("""
+            color:#555555;
+            font-size:12px;
+            padding:4px;
+        """)
+
+        layout.addWidget(currency_label, 0, 0)
+        layout.addWidget(self.currency_combo, 0, 1)
+        layout.addWidget(note, 1, 0, 1, 2)
+
+        return group
+
+    def create_exchange_rates_group(self):
+
+        group = QGroupBox("Exchange Rates to PKR")
+        layout = QGridLayout()
+        group.setLayout(layout)
+
+        info = QLabel(
+            "Enter rates as: 1 foreign currency unit = X PKR. "
+            "Example: 1 USD = 280 PKR."
+        )
+        info.setWordWrap(True)
+        info.setStyleSheet("""
+            color:#555555;
+            font-size:12px;
+            padding:4px;
+        """)
+
+        layout.addWidget(info, 0, 0, 1, 3)
+
+        row = 1
+
+        pkr_label = QLabel("PKR:")
+        pkr_value = QLabel("1.0000")
+        pkr_note = QLabel("Base Currency")
+
+        layout.addWidget(pkr_label, row, 0)
+        layout.addWidget(pkr_value, row, 1)
+        layout.addWidget(pkr_note, row, 2)
+
+        row += 1
+
+        for currency_code in SUPPORTED_CURRENCIES:
+
+            if currency_code == "PKR":
+                continue
+
+            currency_name = CURRENCY_NAMES.get(currency_code, currency_code)
+
+            label = QLabel(f"{currency_code}:")
+            rate_input = QDoubleSpinBox()
+            rate_input.setRange(0.0001, 1000000)
+            rate_input.setDecimals(4)
+            rate_input.setSingleStep(1)
+            rate_input.setMinimumHeight(32)
+
+            note = QLabel(f"1 {currency_code} = PKR | {currency_name}")
+
+            layout.addWidget(label, row, 0)
+            layout.addWidget(rate_input, row, 1)
+            layout.addWidget(note, row, 2)
+
+            self.rate_inputs[currency_code] = rate_input
+
+            row += 1
+
+        reset_btn = QPushButton("Reset Default Rates")
+        reset_btn.setMinimumHeight(34)
+        reset_btn.clicked.connect(self.reset_default_rates)
+
+        layout.addWidget(reset_btn, row, 1)
+
+        return group
+
+    def load_current_values(self):
+
+        theme = str(
+            self.settings.get("theme", "light")
+        ).strip().lower()
+
+        if theme not in ["light", "dark"]:
+            theme = "light"
+
+        self.theme_combo.setCurrentText(theme)
+
+        try:
+            concentration_limit = float(
+                self.settings.get("concentration_limit", 30)
+            )
+
+        except (ValueError, TypeError):
+            concentration_limit = 30
+
+        self.concentration_spin.setValue(concentration_limit)
+
+        self.backup_input.setText(
+            str(self.settings.get("backup_folder", ""))
+        )
+
+        selected_currency = str(
+            self.settings.get("currency", "PKR")
+        ).strip().upper()
+
+        currency_index = self.currency_combo.findData(selected_currency)
 
         if currency_index >= 0:
-            self.currency.setCurrentIndex(currency_index)
+            self.currency_combo.setCurrentIndex(currency_index)
 
-        self.concentration_limit.setText(
-            str(self.settings.get("concentration_limit", 30))
-        )
+        exchange_rates = self.settings.get("exchange_rates", {})
 
-        self.backup_folder.setText(
-            str(self.settings.get("backup_folder", "backups"))
-        )
+        if not isinstance(exchange_rates, dict):
+            exchange_rates = {}
 
-        theme = str(self.settings.get("theme", "light"))
+        # Legacy support.
+        legacy_usd_rate = self.settings.get("usd_to_pkr_rate", None)
 
-        theme_index = self.theme.findText(theme)
+        for currency_code, input_widget in self.rate_inputs.items():
 
-        if theme_index >= 0:
-            self.theme.setCurrentIndex(theme_index)
+            rate = exchange_rates.get(
+                currency_code,
+                DEFAULT_EXCHANGE_RATES.get(currency_code, 1)
+            )
 
-        auto_refresh = bool(
-            self.settings.get("auto_refresh", False)
-        )
+            if currency_code == "USD" and legacy_usd_rate:
+                rate = legacy_usd_rate
 
-        self.auto_refresh.setChecked(auto_refresh)
+            try:
+                rate = float(rate)
+
+            except (ValueError, TypeError):
+                rate = DEFAULT_EXCHANGE_RATES.get(currency_code, 1)
+
+            if rate <= 0:
+                rate = DEFAULT_EXCHANGE_RATES.get(currency_code, 1)
+
+            input_widget.setValue(rate)
 
     def browse_backup_folder(self):
 
         folder = QFileDialog.getExistingDirectory(
             self,
             "Select Backup Folder",
-            self.backup_folder.text().strip()
+            self.backup_input.text().strip()
         )
 
         if folder:
-            self.backup_folder.setText(folder)
+            self.backup_input.setText(folder)
 
-    def validate_and_accept(self):
-
-        concentration_limit = self.concentration_limit.text().strip()
-
-        if not concentration_limit:
-            QMessageBox.warning(
-                self,
-                "Validation Error",
-                "Please enter concentration alert limit."
-            )
-            return
-
-        try:
-            concentration_limit = float(concentration_limit)
-
-        except ValueError:
-            QMessageBox.warning(
-                self,
-                "Validation Error",
-                "Concentration alert limit must be numeric."
-            )
-            return
-
-        if concentration_limit <= 0 or concentration_limit > 100:
-            QMessageBox.warning(
-                self,
-                "Validation Error",
-                "Concentration alert limit must be between 1 and 100."
-            )
-            return
-
-        backup_folder = self.backup_folder.text().strip()
-
-        if not backup_folder:
-            QMessageBox.warning(
-                self,
-                "Validation Error",
-                "Please enter backup folder."
-            )
-            return
-
-        self.accept()
-
-    def reset_default_settings(self):
+    def reset_default_rates(self):
 
         confirm = QMessageBox.question(
             self,
-            "Reset Settings",
-            "Are you sure you want to reset settings to default values?",
+            "Reset Exchange Rates",
+            "Do you want to reset all exchange rates to default values?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
@@ -181,24 +324,55 @@ class SettingsDialog(QDialog):
         if confirm != QMessageBox.Yes:
             return
 
-        self.settings = reset_settings()
+        for currency_code, input_widget in self.rate_inputs.items():
 
-        self.load_values()
+            input_widget.setValue(
+                DEFAULT_EXCHANGE_RATES.get(currency_code, 1)
+            )
 
-        QMessageBox.information(
-            self,
-            "Settings Reset",
-            "Settings have been reset to default values."
-        )
+    def validate_and_accept(self):
+
+        backup_folder = self.backup_input.text().strip()
+
+        if not backup_folder:
+            QMessageBox.warning(
+                self,
+                "Missing Backup Folder",
+                "Please select a backup folder."
+            )
+            return
+
+        for currency_code, input_widget in self.rate_inputs.items():
+
+            if input_widget.value() <= 0:
+
+                QMessageBox.warning(
+                    self,
+                    "Invalid Exchange Rate",
+                    f"Exchange rate for {currency_code} must be greater than zero."
+                )
+                return
+
+        self.accept()
 
     def get_data(self):
 
+        selected_currency = self.currency_combo.currentData()
+
+        exchange_rates = {
+            "PKR": 1.0
+        }
+
+        for currency_code, input_widget in self.rate_inputs.items():
+
+            exchange_rates[currency_code] = float(input_widget.value())
+
         return {
-            "currency": self.currency.currentText(),
-            "concentration_limit": float(
-                self.concentration_limit.text().strip()
-            ),
-            "backup_folder": self.backup_folder.text().strip(),
-            "theme": self.theme.currentText(),
-            "auto_refresh": self.auto_refresh.isChecked()
+            "currency": selected_currency,
+            "theme": self.theme_combo.currentText(),
+            "concentration_limit": float(self.concentration_spin.value()),
+            "backup_folder": self.backup_input.text().strip(),
+            "exchange_rates": exchange_rates,
+            # Legacy key kept so old code remains safe.
+            "usd_to_pkr_rate": exchange_rates.get("USD", 280.0),
         }

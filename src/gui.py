@@ -42,6 +42,10 @@ from dividend_charts_window import DividendChartsWindow
 from dividend_yield_window import DividendYieldWindow
 from services.mutual_fund_service import get_mutual_fund_summary
 from services.dividend_yield_service import get_dividend_dashboard_summary
+from services.currency_service import (
+    format_currency as format_display_currency,
+    get_conversion_note,
+)
 
 
 class SortableTableWidgetItem(QTableWidgetItem):
@@ -130,6 +134,15 @@ class MainWindow(QMainWindow):
 
         dividend_summary_layout = self.create_dividend_summary_cards()
 
+        self.currency_conversion_note = QLabel("")
+        self.currency_conversion_note.setAlignment(Qt.AlignCenter)
+        self.currency_conversion_note.setMinimumHeight(28)
+        self.currency_conversion_note.setStyleSheet("""
+            font-size:12px;
+            color:#555555;
+            padding:4px;
+        """)
+
         self.concentration_alert = QLabel("")
         self.concentration_alert.setAlignment(Qt.AlignCenter)
         self.concentration_alert.setMinimumHeight(35)
@@ -143,6 +156,7 @@ class MainWindow(QMainWindow):
         content_layout.addLayout(combined_summary_layout)
         content_layout.addWidget(dividend_summary_heading)
         content_layout.addLayout(dividend_summary_layout)
+        content_layout.addWidget(self.currency_conversion_note)
         content_layout.addWidget(self.concentration_alert)
         content_layout.addLayout(search_layout)
         content_layout.addWidget(self.table)
@@ -371,6 +385,7 @@ class MainWindow(QMainWindow):
             self.update_summary_cards(self.all_holdings)
             self.update_combined_summary_cards(self.all_holdings)
             self.update_dividend_dashboard_cards()
+            self.update_currency_conversion_note()
             self.update_concentration_alert(self.all_holdings)
 
             self.statusBar().showMessage(
@@ -611,6 +626,16 @@ class MainWindow(QMainWindow):
         )
 
 
+
+    def update_currency_conversion_note(self):
+
+        try:
+            note = get_conversion_note()
+            self.currency_conversion_note.setText(note)
+
+        except Exception:
+            self.currency_conversion_note.setText("Base currency: PKR")
+
     def update_dividend_dashboard_cards(self):
 
         try:
@@ -841,9 +866,12 @@ class MainWindow(QMainWindow):
 
     def format_currency(self, value):
 
-        currency = self.get_currency()
+        try:
+            return format_display_currency(value)
 
-        return f"{currency} {value:,.2f}"
+        except Exception:
+            currency = self.get_currency()
+            return f"{currency} {value:,.2f}"
 
     def generate_reports(self):
 
