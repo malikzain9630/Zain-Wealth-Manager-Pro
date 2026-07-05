@@ -38,6 +38,7 @@ from mutual_fund_window import MutualFundWindow
 from charts_window import ChartsWindow
 from dividend_window import DividendWindow
 from dividend_charts_window import DividendChartsWindow
+from dividend_yield_window import DividendYieldWindow
 from services.mutual_fund_service import get_mutual_fund_summary
 
 
@@ -79,6 +80,7 @@ class MainWindow(QMainWindow):
         self.charts_window = None
         self.dividend_window = None
         self.dividend_charts_window = None
+        self.dividend_yield_window = None
 
         self.init_ui()
         self.apply_theme()
@@ -163,6 +165,7 @@ class MainWindow(QMainWindow):
             ("📈 Charts", self.open_charts),
             ("💰 Dividends", self.open_dividends),
             ("📊 Dividend Charts", self.open_dividend_charts),
+            ("💸 Dividend Yield", self.open_dividend_yield),
             ("📄 Excel / PDF Report", self.generate_reports),
             ("💾 Backup", self.backup_database),
             ("♻ Restore", self.restore_database),
@@ -1014,6 +1017,25 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Dividend Charts Error",
+                str(e)
+            )
+
+
+    def open_dividend_yield(self):
+
+        try:
+            self.dividend_yield_window = DividendYieldWindow(self)
+            self.dividend_yield_window.show()
+
+            self.statusBar().showMessage(
+                "Dividend Yield & Passive Income Forecast opened."
+            )
+
+        except Exception as e:
+
+            QMessageBox.critical(
+                self,
+                "Dividend Yield Error",
                 str(e)
             )
 
